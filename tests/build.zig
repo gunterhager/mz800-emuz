@@ -8,7 +8,7 @@ pub const Options = struct {
     src_dir: []const u8,
     target: ResolvedTarget,
     optimize: OptimizeMode,
-    mod_chipz: *Module,
+    mod_chips: *Module,
 };
 
 pub fn build(b: *Build, opts: Options) void {
@@ -23,7 +23,7 @@ pub fn build(b: *Build, opts: Options) void {
                 .root_source_file = b.path(b.fmt("{s}/{s}.test.zig", .{ opts.src_dir, name })),
                 .target = opts.target,
                 .imports = &.{
-                    .{ .name = "chipz", .module = opts.mod_chipz },
+                    .{ .name = "chips", .module = opts.mod_chips },
                 },
             }),
         });
