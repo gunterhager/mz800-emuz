@@ -85,12 +85,61 @@ pub fn Type(comptime cfg: TypeConfig) type {
             };
         };
 
+        /// Write format register
+        pub const WF_MODE = struct {
+            pub const PLANE_I: u8 = 1 << 0;
+            pub const PLANE_II: u8 = 1 << 1;
+            pub const PLANE_III: u8 = 1 << 2;
+            pub const PLANE_IV: u8 = 1 << 3;
+            pub const FRAME_B: u8 = 1 << 4;
+            /// Write format mode
+            pub const WMD_MASK = maskm(u8, .{ 5, 6, 7 });
+            pub const WMD = struct {
+                pub const SINGLE: u8 = 0b000 << 5;
+                pub const XOR: u8 = 0b001 << 5;
+                pub const OR: u8 = 0b010 << 5;
+                pub const RESET: u8 = 0b011 << 5;
+                pub const REPLACE0: u8 = 0b100 << 5;
+                pub const REPLACE1: u8 = 0b101 << 5;
+                pub const PSET0: u8 = 0b110 << 5;
+                pub const PSET1: u8 = 0b111 << 5;
+            };
+        };
+
+        /// Read format register
+        pub const RF_MODE = struct {
+            pub const PLANE_I: u8 = 1 << 0;
+            pub const PLANE_II: u8 = 1 << 1;
+            pub const PLANE_III: u8 = 1 << 2;
+            pub const PLANE_IV: u8 = 1 << 3;
+            pub const FRAME_B: u8 = 1 << 4;
+            pub const SEARCH: u8 = 1 << 7;
+        };
+
         /// Display mode register
         pub const DMD_MODE = struct {
-            pub const DMD_HIRES: u4 = 1 << 2;
-            pub const DMD_HICOLOR: u4 = 1 << 1;
-            pub const DMD_FRAME_B: u4 = 1 << 0;
-            pub const DMD_MZ700: u4 = 1 << 3;
+            pub const HIRES: u4 = 1 << 2;
+            pub const HICOLOR: u4 = 1 << 1;
+            pub const FRAME_B: u4 = 1 << 0;
+            pub const MZ700: u4 = 1 << 3;
         };
+
+        /// Color intensity helper function
+        fn CI(i: u1) u8 {
+            // Color intensity high
+            const CI0: u8 = 0x78;
+            // Color intensity low
+            const CI1: u8 = 0xdf;
+            return if (i == 0) CI0 else CI1;
+        }
+
+        fn colorIRGBtoABGR(i: u1, g: u1, r: u1, b: u1) u32 {
+            return 0xff000000 | (@as(u8, b) * CI(i)) << 16 | (@as(u8, g) * CI(i)) << 8 | (@as(u8, r) * CI(i)) << 0;
+        }
+
+        /// Colors - the MZ-800 has 16 fixed colors.
+        /// Color codes on the MZ-800 are IGRB (Intensity, Green, Red, Blue).
+        /// NOTE: the colors in the emulation frame buffer are encoded in ABGR.
+        pub const COLOR = struct {};
     };
 }
