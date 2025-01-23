@@ -53,7 +53,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
         pub const DBUS = maskm(Bus, &cfg.pins.DBUS);
         pub const ABUS = maskm(Bus, &cfg.pins.ABUS);
         pub const M1 = mask(Bus, cfg.pins.M1);
-        pub const IOREQ = mask(Bus, cfg.pins.IORQ);
+        pub const IORQ = mask(Bus, cfg.pins.IORQ);
         pub const RD = mask(Bus, cfg.pins.RD);
         pub const WR = mask(Bus, cfg.pins.WR);
 
@@ -98,16 +98,16 @@ pub fn Type(comptime cfg: TypeConfig) type {
             pub const PLANE_IV: u8 = 1 << 3;
             pub const FRAME_B: u8 = 1 << 4;
             /// Write format mode
-            pub const WMD_MASK = maskm(u8, .{ 5, 6, 7 });
+            pub const WMD_MASK = maskm(u8, &[_]comptime_int{ 5, 6, 7 });
             pub const WMD = struct {
-                pub const SINGLE: u8 = 0b000 << 5;
-                pub const XOR: u8 = 0b001 << 5;
-                pub const OR: u8 = 0b010 << 5;
-                pub const RESET: u8 = 0b011 << 5;
-                pub const REPLACE0: u8 = 0b100 << 5;
-                pub const REPLACE1: u8 = 0b101 << 5;
-                pub const PSET0: u8 = 0b110 << 5;
-                pub const PSET1: u8 = 0b111 << 5;
+                pub const SINGLE: u3 = 0b000;
+                pub const XOR: u3 = 0b001;
+                pub const OR: u3 = 0b010;
+                pub const RESET: u3 = 0b011;
+                pub const REPLACE0: u3 = 0b100;
+                pub const REPLACE1: u3 = 0b101;
+                pub const PSET0: u3 = 0b110;
+                pub const PSET1: u3 = 0b111;
             };
         };
 
@@ -178,12 +178,22 @@ pub fn Type(comptime cfg: TypeConfig) type {
         };
 
         /// Palette size
-        const PALETTE_SIZE = 4;
+        pub const PALETTE_SIZE = 4;
+
+        pub const PAL_SW: u8 = 1 << 7;
 
         /// Size of physical VRAM bank (two can be installed)
-        const VRAM_SIZE = 0x4000; // 16K
+        pub const VRAM_SIZE = 0x4000; // 16K
         /// VRAM plane offset, used to calculate VRAM addresses
-        const VRAM_PLANE_OFFSET = 0x2000;
+        pub const VRAM_PLANE_OFFSET = 0x2000;
+        /// Last available VRAM address in MZ-700 mode
+        pub const VRAM_MAX_MZ700_ADDR: u16 = 0x1f3f;
+
+        pub const VRAM_MAX_LORES_ADDR: u16 = 0x1f3f;
+        pub const VRAM_MAX_HIRES_ADDR: u16 = 0x3e7f;
+
+        /// Value we get when reading from illegal memory address
+        pub const ILLEGAL_READ_VALUE: u8 = 0xff;
 
         // Display size
         pub const DISPLAY_WIDTH = 640;
@@ -218,6 +228,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
         bcol: u8 = 0,
         /// Palette registers
         plt: [PALETTE_SIZE]u4 = [_]u4{0} ** PALETTE_SIZE,
+        /// Palette registers in RGBA8 format
+        plt_rgba8: [PALETTE_SIZE]u32 = [_]u32{0} ** PALETTE_SIZE,
         /// Palette switch register (for 16 color mode)
         plt_sw: u2 = 0,
 
@@ -293,13 +305,457 @@ pub fn Type(comptime cfg: TypeConfig) type {
             self.rgba8_buffer = std.mem.zeroes(@TypeOf(self.rgba8_buffer));
         }
 
+        /// Execute one clock cycle
+        pub fn tick(self: *Self, in_bus: Bus) Bus {
+            return self.iorq(in_bus);
+        }
+
+        pub fn set_wf(self: *Self, value: u8) void {
+            self.wf = value;
+            // Frame flag is shared between WF and RF registers
+            const frame = value & WF_MODE.FRAME_B;
+            self.rf |= frame;
+        }
+
+        pub fn set_rf(self: *Self, value: u8) void {
+            // Bits 5 and 6 can't be set
+            self.rf = value & (~(1 << 6 | 1 << 5));
+            // Frame flag is shared between WF and RF registers
+            const frame = value & RF_MODE.FRAME_B;
+            self.wf |= frame;
+        }
+
+        /// Perform an IORQ machine cycle
+        fn iorq(self: *Self, in_bus: Bus) Bus {
+            var bus = in_bus;
+            const addr = getABUS(bus);
+            const low_addr = addr & 0xff;
+            const value = getData(bus);
+            switch (bus & (IORQ | M1 | RD | WR)) {
+                // Read
+                IORQ | RD => {
+                    // Display status register
+                    if (low_addr == IO_ADDR.OUT.STATUS) {
+                        bus = setData(bus, self.status);
+                    }
+                },
+                // Write
+                IORQ | WR => {
+                    switch (low_addr) {
+                        // Write format register
+                        IO_ADDR.IN.WF => {
+                            self.set_wf(value);
+                        },
+                        // Read format register
+                        IO_ADDR.IN.RF => {
+                            self.set_rf(value);
+                        },
+                        // Display mode register
+                        IO_ADDR.IN.DMD => {
+                            self.set_dmd(value);
+                        },
+                        // Scroll registers and border color register share the same lower address
+                        (IO_ADDR.IN.SOF1 & 0xff) => {
+                            switch (addr) {
+                                // Scroll offset register 1
+                                IO_ADDR.IN.SOF1 => {
+                                    self.sof1 = value;
+                                },
+                                // Scroll offset register 2
+                                IO_ADDR.IN.SOF2 => {
+                                    // only the two lowest bits can be set
+                                    self.sof2 = value & 0x03;
+                                },
+                                // Scroll width register
+                                IO_ADDR.IN.SW => {
+                                    // Bit 7 can't be set
+                                    self.sw = value & (~(1 << 7));
+                                },
+                                // Scroll start address register
+                                IO_ADDR.IN.SSA => {
+                                    // Bit 7 can't be set
+                                    self.ssa = value & (~(1 << 7));
+                                },
+                                // Scroll end address register
+                                IO_ADDR.IN.SEA => {
+                                    // Bit 7 can't be set
+                                    self.sea = value & (~(1 << 7));
+                                },
+                                // Border color register
+                                IO_ADDR.IN.BCOL => {
+                                    // Only lower nibble can be set
+                                    self.bcol = value & 0x0f;
+                                },
+                            }
+                        },
+                        IO_ADDR.IN.PAL => {
+                            // Set palette switch register
+                            if ((value & PAL_SW) != 0) {
+                                // Two lowest bits contain the palette switch value.
+                                self.plt_sw = value & ((1 << 1) | 1);
+                            } else {
+                                // High 3 bits contain palette register index
+                                const index: comptime_int = value >> 4;
+                                // Lower nibble contains color code in IRGB
+                                const color: u4 = value & 0x0f;
+                                // Set palette register to color
+                                self.plt[index] = color;
+                                self.plt_rgba8[index] = COLOR.all[color];
+                            }
+                        },
+                    }
+                },
+                else => {},
+            }
+            return bus;
+        }
+
+        /// Set display mode register.
+        /// This sets also the MZ800/MZ700 mode flags.
         pub fn set_dmd(self: *Self, value: u8) void {
-            self.dmd = value;
+            // Only the lower nibble can be set
+            self.dmd = value & 0x0f;
             self.is_mz700 = (value & 0x0f) == DMD_MODE.MZ700;
             if (self.is_mz700) {
                 self.status &= ~STATUS_MODE.MZ800;
             } else {
                 self.status |= STATUS_MODE.MZ800;
+            }
+        }
+
+        /// Translate address bus to VRAM addresses in hires mode.
+        fn hires_vram_addr(addr: u16) u16 {
+            // In hires VRAM addresses are spread over two planes.
+            // Even addresses goto lower and odd to higher planes.
+            // Therefore we shift down the address and add the correct
+            // plane offset depending on the parity.
+            return (addr >> 1) + (if ((addr & 1) == 1) @as(u16, 0x2000) else @as(u16, 0x0000));
+        }
+
+        /// Read a byte from VRAM. The meaning of the bits in the byte depend on
+        /// the read format register of the GDG.
+        pub fn mem_rd(self: *Self, addr: u16) u8 {
+            if (self.is_mz700) {
+                if ((self.rf != RF_MODE.PLANE_I) or (addr > VRAM_MAX_MZ700_ADDR)) {
+                    return ILLEGAL_READ_VALUE;
+                } else {
+                    return self.vram1[addr];
+                }
+            } else {
+                const hires = (self.dmd & DMD_MODE.HIRES) != 0;
+                const hicolor = (self.dmd & DMD_MODE.HICOLOR) != 0;
+
+                if (addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {
+                    return ILLEGAL_READ_VALUE;
+                }
+
+                // Read flags
+                const is_searching = (self.rf & RF_MODE.SEARCH) != 0;
+                const is_frameB = (self.rf & RF_MODE.FRAME_B) != 0;
+                const is_planeI = (self.rf & RF_MODE.PLANE_I) != 0;
+                const is_planeII = (self.rf & RF_MODE.PLANE_II) != 0;
+                const is_planeIII = (self.rf & RF_MODE.PLANE_III) != 0;
+                const is_planeIV = (self.rf & RF_MODE.PLANE_IV) != 0;
+
+                // Plane data
+                var planeI_data: u8 = ILLEGAL_READ_VALUE;
+                var planeII_data: u8 = ILLEGAL_READ_VALUE;
+                var planeIII_data: u8 = ILLEGAL_READ_VALUE;
+                var planeIV_data: u8 = ILLEGAL_READ_VALUE;
+                if (hires) {
+                    planeI_data = self.vram1[hires_vram_addr(addr)];
+                    planeIII_data = self.vram2[hires_vram_addr(addr)];
+                } else {
+                    planeI_data = self.vram1[addr];
+                    planeII_data = self.vram1[addr + VRAM_PLANE_OFFSET];
+                    planeIII_data = self.vram2[addr];
+                    planeIV_data = self.vram2[addr + VRAM_PLANE_OFFSET];
+                }
+
+                if (is_searching) {
+                    if (hires) {
+                        if (hicolor) {
+                            return (if (is_planeI) planeI_data else ~planeI_data) | (if (is_planeIII) planeIII_data else ~planeIII_data);
+                        } else {
+                            return if (is_planeI) planeI_data else ~planeI_data;
+                        }
+                    } else {
+                        if (hicolor) {
+                            return (if (is_planeI) planeI_data else ~planeI_data) | (if (is_planeII) planeII_data else ~planeII_data) | (if (is_planeIII) planeIII_data else ~planeIII_data) | (if (is_planeIV) planeIV_data else ~planeIV_data);
+                        } else {
+                            if (is_frameB) {
+                                return (if (is_planeIII) planeIII_data else ~planeIII_data) | (if (is_planeIV) planeIV_data else ~planeIV_data);
+                            } else {
+                                return (if (is_planeI) planeI_data else ~planeI_data) | (if (is_planeII) planeII_data else ~planeII_data);
+                            }
+                        }
+                    }
+                } else {
+                    if (is_planeI) {
+                        return planeI_data;
+                    }
+                    if (is_planeII) {
+                        return planeII_data;
+                    }
+                    if (is_planeIII) {
+                        return planeIII_data;
+                    }
+                    if (is_planeIV) {
+                        return planeIV_data;
+                    }
+                    return ILLEGAL_READ_VALUE;
+                }
+            }
+        }
+
+        /// Perform the actual write to VRAM depending on the write mode register.
+        fn mem_wr_op(write_mode: u3, vram_ptr: *u8, data: u8, plane_enabled: bool) void {
+            switch (write_mode) {
+                WF_MODE.WMD.SINGLE => {
+                    if (plane_enabled) {
+                        vram_ptr.* = data;
+                    }
+                },
+                WF_MODE.WMD.XOR => {
+                    if (plane_enabled) {
+                        vram_ptr.* = data ^ vram_ptr.*;
+                    }
+                },
+                WF_MODE.WMD.OR => {
+                    if (plane_enabled) {
+                        vram_ptr.* = data | vram_ptr.*;
+                    }
+                },
+                WF_MODE.WMD.RESET => {
+                    if (plane_enabled) {
+                        vram_ptr.* = ~data & vram_ptr.*;
+                    }
+                },
+                WF_MODE.WMD.REPLACE0, WF_MODE.WMD.REPLACE1 => {
+                    vram_ptr.* = if (plane_enabled) data else 0x00;
+                },
+                WF_MODE.WMD.PSET0, WF_MODE.WMD.PSET1 => {
+                    if (plane_enabled) {
+                        vram_ptr.* = data | vram_ptr.*;
+                    } else {
+                        vram_ptr.* = ~data & vram_ptr.*;
+                    }
+                },
+            }
+        }
+
+        /// Write a byte to VRAM. What gets actually written depends on the
+        /// write format register of the GDG and the display mode.
+        /// Pixel data will also be written to the RGBA8 buffer.
+        pub fn mem_wr(self: *Self, addr: u16, data: u8) void {
+            if (self.is_mz700) {
+                if ((self.wf != RF_MODE.PLANE_I) or (addr > VRAM_MAX_MZ700_ADDR)) {
+                    return;
+                } else {
+                    self.vram1[addr] = data;
+                }
+            } else {
+                const hires = (self.dmd & DMD_MODE.HIRES) != 0;
+                const hicolor = (self.dmd & DMD_MODE.HICOLOR) != 0;
+
+                if (addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {
+                    return;
+                }
+
+                // Write flags
+                const write_mode: u3 = @truncate((self.wf & WF_MODE.WMD_MASK) >> 5);
+                const is_frameB = (self.wf & WF_MODE.FRAME_B) != 0;
+                const is_planeI = (self.wf & WF_MODE.PLANE_I) != 0;
+                const is_planeII = (self.wf & WF_MODE.PLANE_II) != 0;
+                const is_planeIII = (self.wf & WF_MODE.PLANE_III) != 0;
+                const is_planeIV = (self.wf & WF_MODE.PLANE_IV) != 0;
+
+                // Write into VRAM
+                if (hires) {
+                    if (hicolor) {
+                        mem_wr_op(write_mode, &self.vram1[hires_vram_addr(addr)], data, is_planeI);
+                        mem_wr_op(write_mode, &self.vram2[hires_vram_addr(addr)], data, is_planeIII);
+                    } else {
+                        if (is_frameB) {
+                            mem_wr_op(write_mode, &self.vram2[hires_vram_addr(addr)], data, is_planeIII);
+                        } else {
+                            mem_wr_op(write_mode, &self.vram1[hires_vram_addr(addr)], data, is_planeI);
+                        }
+                    }
+                } else {
+                    if (hicolor) {
+                        mem_wr_op(write_mode, &self.vram1[addr], data, is_planeI);
+                        mem_wr_op(write_mode, &self.vram1[addr + VRAM_PLANE_OFFSET], data, is_planeII);
+                        mem_wr_op(write_mode, &self.vram2[addr], data, is_planeIII);
+                        mem_wr_op(write_mode, &self.vram2[addr + VRAM_PLANE_OFFSET], data, is_planeIV);
+                    } else {
+                        if (is_frameB) {
+                            mem_wr_op(write_mode, &self.vram2[addr], data, is_planeIII);
+                            mem_wr_op(write_mode, &self.vram2[addr + VRAM_PLANE_OFFSET], data, is_planeIV);
+                        } else {
+                            mem_wr_op(write_mode, &self.vram1[addr], data, is_planeI);
+                            mem_wr_op(write_mode, &self.vram1[addr + VRAM_PLANE_OFFSET], data, is_planeII);
+                        }
+                    }
+                }
+            }
+            // Decode VRAM into RGBA8 buffer
+            self.decode_vram(addr);
+        }
+
+        /// Decode one byte of VRAM into the RGBA8 buffer.
+        fn decode_vram(self: *Self, addr: u16) void {
+            if (self.is_mz700) {
+                self.decode_vram_mz700(addr);
+            } else {
+                self.decode_vram_mz800(addr);
+            }
+        }
+
+        /// Decode one byte of VRAM into the RGBA8 buffer in MZ-700 mode.
+        fn decode_vram_mz700(self: *Self, addr: u16) void {
+            // Convert addr to address offsets in character VRAM and color VRAM
+            // Character range: 0x0000 - 0x03f7
+            const character_code_addr: u16 = if (addr >= 0x0800) (addr - 0x0800) else addr;
+            // Color range: 0x0800 - 0x0bf7
+            const color_addr: u16 = if (addr >= 0x0800) addr else (addr + 0x0800);
+
+            // Convert color code to foreground and background colors
+            const color_code = self.vram1[color_addr];
+            var fg_color_code = (color_code & 0x70) >> 4;
+            // All colors except black should be high intensity
+            fg_color_code = if (fg_color_code == 0) 0 else fg_color_code | (1 << 7);
+            const fg_color = COLOR.all[fg_color_code];
+            var bg_color_code = color_code & 0x07;
+            // All colors except black should be high intensity
+            bg_color_code = if (bg_color_code == 0) 0 else bg_color_code | (1 << 7);
+            const bg_color = COLOR.all[bg_color_code];
+
+            // Use bit 7 of color code to select start address in character ROM.
+            const use_alternate_characters = (color_code & (1 << 7)) != 0;
+
+            // Convert character code to address offset in character ROM.
+            const character_code = self.vram1[character_code_addr];
+            // Each character consists of 8 byte
+            var character_addr: u16 = character_code * 8;
+            if (use_alternate_characters) {
+                // A full character set contains 256 characters
+                // so this is the offset to the alternate characters.
+                character_addr += 256 * 8;
+            }
+
+            // Calculate character coordinates
+
+            // 40 characters on a line
+            const column: u32 = character_code_addr % 40;
+            // 25 lines
+            const row: u32 = character_code_addr / 40;
+            // Width of character in hires pixel
+            const character_width: u32 = 8 * 2;
+            // Width of line in hires pixel
+            const line_width: u32 = 40 * character_width;
+            // Height of character in pixel
+            const character_height: u32 = 8;
+            // Character start address in RGBA8 buffer
+            const character_pixel_addr: u32 = column * character_width + row * line_width * character_height;
+
+            // Character data lookup and copy to RGBA8 buffer
+            for (0..8) |char_byte_index| {
+                const char_byte = self.cgrom[character_addr + char_byte_index];
+                // Pixel index in rgba8_buffer
+                var index: u32 = character_pixel_addr;
+                const offset: u32 = @as(u32, @intCast(char_byte_index)) * line_width;
+                for (0..8) |bit| {
+                    // Get color for pixel
+                    const foreground = ((char_byte >> @intCast(bit)) & 0x01) == 1;
+                    const color = if (foreground) fg_color else bg_color;
+
+                    // Write character data to RGBA8 buffer (in 320x200 resolution, 2 bytes per pixel)
+                    self.rgba8_buffer[index + offset] = color;
+                    index += 1;
+                    self.rgba8_buffer[index + offset] = color;
+                    index += 1;
+                }
+            }
+        }
+
+        /// Decode one byte of VRAM into the RGBA8 buffer in MZ-800 mode.
+        fn decode_vram_mz800(self: *Self, addr: u16) void {
+            const hires = (self.dmd & DMD_MODE.HIRES) != 0;
+            const hicolor = (self.dmd & DMD_MODE.HICOLOR) != 0;
+
+            // Pixel index in rgba8_buffer, in lores we write 2 pixels for each lores pixel
+            var index: u32 = addr * 8 * (if (hires) @as(u8, 1) else @as(u8, 2));
+
+            // VRAM address check
+            if (addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {
+                return;
+            }
+
+            // Get VRAM bytes for each plane
+            var planeI_data: u8 = 0;
+            var planeII_data: u8 = 0;
+            var planeIII_data: u8 = 0;
+            var planeIV_data: u8 = 0;
+            if (hires) {
+                planeI_data = self.vram1[hires_vram_addr(addr)];
+                planeIII_data = self.vram2[hires_vram_addr(addr)];
+            } else {
+                planeI_data = self.vram1[addr];
+                planeII_data = self.vram1[addr + VRAM_PLANE_OFFSET];
+                planeIII_data = self.vram2[addr];
+                planeIV_data = self.vram2[addr + VRAM_PLANE_OFFSET];
+            }
+
+            // Iterate over 8 bits of VRAM bytes from planes.
+            // Each bit represents 1 pixel. The color is determined by combining bits of
+            // each plane.
+            // We need to set one byte of RGBA8 buffer for each VRAM bit (2 bytes in 320x200 mode)
+            for (0..8) |bit_index| {
+                const bit: u3 = @intCast(bit_index);
+                // Combine bits of each plane into a byte
+                const value: u8 = ((planeI_data >> bit) & 0x01) | (((planeII_data >> bit) & 0x01) << 1) | (((planeIII_data >> bit) & 0x01) << 2) | (((planeIV_data >> bit) & 0x01) << 3);
+
+                // Look up in palette
+                var color_code: u8 = 0;
+
+                // Special lookup for 320x200, 16 colors
+                if (!hires and hicolor) {
+                    // If plane III and IV match palette switch
+                    if (((value >> 2) & 0x03) == self.plt_sw) {
+                        // Take color from palette
+                        color_code = self.plt[value];
+                    } else {
+                        // Take color directly from plane data
+                        color_code = value;
+                    }
+                } else { // All other modes take color from palette
+                    const is_frameB = (self.dmd & DMD_MODE.FRAME_B) != 0;
+                    var palette: u2 = 0;
+                    if (hires) {
+                        if (hicolor) {
+                            // Combine planes I, III
+                            palette = @truncate((value | (value >> 1)) & 0x3);
+                        } else {
+                            palette = @truncate((if (is_frameB) (value >> 2) else value) & 0x1);
+                        }
+                    } else {
+                        palette = @truncate((if (is_frameB) (value >> 2) else value) & 0x3);
+                    }
+                    color_code = self.plt[palette];
+                }
+
+                // Look up final color
+                const color = COLOR.all[color_code];
+
+                // Write to RGBA8 buffer
+                if (!hires) {
+                    // We need to write 2 pixels for each lores pixel
+                    self.rgba8_buffer[index] = color;
+                    index += 1;
+                }
+                self.rgba8_buffer[index] = color;
+                index += 1;
             }
         }
     };

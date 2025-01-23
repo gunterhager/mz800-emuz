@@ -5,10 +5,18 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const dep_chipz = b.dependency("chipz", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const mod_chips = b.addModule("chips", .{
         .root_source_file = b.path("src/chips/chips.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "chipz", .module = dep_chipz.module("chipz") },
+        },
     });
 
     const exe_mod = b.createModule(.{
