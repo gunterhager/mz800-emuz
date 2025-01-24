@@ -319,7 +319,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         pub fn set_rf(self: *Self, value: u8) void {
             // Bits 5 and 6 can't be set
-            self.rf = value & (~(1 << 6 | 1 << 5));
+            self.rf = value & (~(@as(u8, 1) << 6 | @as(u8, 1) << 5));
             // Frame flag is shared between WF and RF registers
             const frame = value & RF_MODE.FRAME_B;
             self.wf |= frame;
@@ -432,6 +432,11 @@ pub fn Type(comptime cfg: TypeConfig) type {
             return (addr >> 1) + (if ((addr & 1) == 1) @as(u16, 0x2000) else @as(u16, 0x0000));
         }
 
+        /// Plane data helper
+        fn p_data(selected: bool, data: u8) u8 {
+            return (if (selected) data else ~data);
+        }
+
         /// Read a byte from VRAM. The meaning of the bits in the byte depend on
         /// the read format register of the GDG.
         pub fn mem_rd(self: *Self, addr: u16) u8 {
@@ -474,23 +479,34 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
                 if (is_searching) {
                     if (hires) {
+                        const pI = p_data(is_planeI, planeI_data);
                         if (hicolor) {
-                            return (if (is_planeI) planeI_data else ~planeI_data) | (if (is_planeIII) planeIII_data else ~planeIII_data);
+                            const pIII = p_data(is_planeIII, planeIII_data);
+                            return pI & pIII;
                         } else {
-                            return if (is_planeI) planeI_data else ~planeI_data;
+                            return pI;
                         }
                     } else {
                         if (hicolor) {
-                            return (if (is_planeI) planeI_data else ~planeI_data) | (if (is_planeII) planeII_data else ~planeII_data) | (if (is_planeIII) planeIII_data else ~planeIII_data) | (if (is_planeIV) planeIV_data else ~planeIV_data);
+                            const pI = p_data(is_planeI, planeI_data);
+                            const pII = p_data(is_planeII, planeII_data);
+                            const pIII = p_data(is_planeIII, planeIII_data);
+                            const pIV = p_data(is_planeIV, planeIV_data);
+                            return pI & pII & pIII & pIV;
                         } else {
                             if (is_frameB) {
-                                return (if (is_planeIII) planeIII_data else ~planeIII_data) | (if (is_planeIV) planeIV_data else ~planeIV_data);
+                                const pIII = p_data(is_planeIII, planeIII_data);
+                                const pIV = p_data(is_planeIV, planeIV_data);
+                                return pIII & pIV;
                             } else {
-                                return (if (is_planeI) planeI_data else ~planeI_data) | (if (is_planeII) planeII_data else ~planeII_data);
+                                const pI = p_data(is_planeI, planeI_data);
+                                const pII = p_data(is_planeII, planeII_data);
+                                return pI & pII;
                             }
                         }
                     }
                 } else {
+                    // Single color read
                     if (is_planeI) {
                         return planeI_data;
                     }
