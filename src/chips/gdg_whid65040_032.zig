@@ -60,7 +60,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
         /// IO addresses of the GDG registers
         pub const IO_ADDR = struct {
             /// Registers that can be written by CPU
-            pub const IN = struct {
+            pub const WR = struct {
                 /// Write format register (writing to VRAM)
                 pub const WF: u16 = 0x00cc;
                 /// Read format register (reading from VRAM)
@@ -85,7 +85,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 pub const PAL: u16 = 0x00f0;
             };
             /// Registers that can be read by CPU
-            pub const OUT = struct {
+            pub const RD = struct {
                 pub const STATUS: u16 = 0x00ce;
             };
         };
@@ -335,7 +335,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 // Read
                 IORQ | RD => {
                     // Display status register
-                    if (low_addr == IO_ADDR.OUT.STATUS) {
+                    if (low_addr == IO_ADDR.RD.STATUS) {
                         bus = setData(bus, self.status);
                     }
                 },
@@ -343,52 +343,52 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 IORQ | WR => {
                     switch (low_addr) {
                         // Write format register
-                        IO_ADDR.IN.WF => {
+                        IO_ADDR.WR.WF => {
                             self.set_wf(value);
                         },
                         // Read format register
-                        IO_ADDR.IN.RF => {
+                        IO_ADDR.WR.RF => {
                             self.set_rf(value);
                         },
                         // Display mode register
-                        IO_ADDR.IN.DMD => {
+                        IO_ADDR.WR.DMD => {
                             self.set_dmd(value);
                         },
                         // Scroll registers and border color register share the same lower address
-                        (IO_ADDR.IN.SOF1 & 0xff) => {
+                        (IO_ADDR.WR.SOF1 & 0xff) => {
                             switch (addr) {
                                 // Scroll offset register 1
-                                IO_ADDR.IN.SOF1 => {
+                                IO_ADDR.WR.SOF1 => {
                                     self.sof1 = value;
                                 },
                                 // Scroll offset register 2
-                                IO_ADDR.IN.SOF2 => {
+                                IO_ADDR.WR.SOF2 => {
                                     // only the two lowest bits can be set
                                     self.sof2 = value & 0x03;
                                 },
                                 // Scroll width register
-                                IO_ADDR.IN.SW => {
+                                IO_ADDR.WR.SW => {
                                     // Bit 7 can't be set
                                     self.sw = value & (~(1 << 7));
                                 },
                                 // Scroll start address register
-                                IO_ADDR.IN.SSA => {
+                                IO_ADDR.WR.SSA => {
                                     // Bit 7 can't be set
                                     self.ssa = value & (~(1 << 7));
                                 },
                                 // Scroll end address register
-                                IO_ADDR.IN.SEA => {
+                                IO_ADDR.WR.SEA => {
                                     // Bit 7 can't be set
                                     self.sea = value & (~(1 << 7));
                                 },
                                 // Border color register
-                                IO_ADDR.IN.BCOL => {
+                                IO_ADDR.WR.BCOL => {
                                     // Only lower nibble can be set
                                     self.bcol = value & 0x0f;
                                 },
                             }
                         },
-                        IO_ADDR.IN.PAL => {
+                        IO_ADDR.WR.PAL => {
                             // Set palette switch register
                             if ((value & PAL_SW) != 0) {
                                 // Two lowest bits contain the palette switch value.
