@@ -316,5 +316,24 @@ pub fn Type() type {
                 else => {},
             }
         }
+
+        pub fn displayInfo(selfOrNull: ?*const Self) DisplayInfo {
+            return .{
+                .fb = .{
+                    .dim = .{
+                        .width = DISPLAY.FB_WIDTH,
+                        .height = DISPLAY.FB_HEIGHT,
+                    },
+                    .buffer = if (selfOrNull) |self| .{ .Rgba8 = &self.fb } else null,
+                },
+                .view = .{
+                    .x = 0,
+                    .y = 0,
+                    .width = DISPLAY.WIDTH,
+                    .height = DISPLAY.HEIGHT,
+                },
+                .orientation = .Landscape,
+            };
+        }
     };
 }

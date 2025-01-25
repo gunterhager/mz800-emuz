@@ -10,6 +10,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const dep_sokol = b.dependency("sokol", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const mod_chips = b.addModule("chips", .{
         .root_source_file = b.path("src/chips/chips.zig"),
         .target = target,
@@ -23,6 +28,10 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "chipz", .module = dep_chipz.module("chipz") },
+            .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+        },
     });
 
     const exe = b.addExecutable(.{
