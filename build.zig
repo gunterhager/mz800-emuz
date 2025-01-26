@@ -24,6 +24,16 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const mod_system = b.addModule("system", .{
+        .root_source_file = b.path("src/system/system.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "chipz", .module = dep_chipz.module("chipz") },
+            .{ .name = "chips", .module = mod_chips },
+        },
+    });
+
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -55,5 +65,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .mod_chips = mod_chips,
+        .mod_system = mod_system,
     });
 }

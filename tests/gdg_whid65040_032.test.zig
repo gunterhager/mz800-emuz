@@ -23,22 +23,22 @@ test "colors" {
 }
 
 test "reset" {
-    const rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
+    var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
     const cgrom = [_]u8{0} ** 64;
     const sut = GDG_WHID65040_032.init(.{
         .cgrom = &cgrom,
-        .rgba8_buffer = rgba8_buffer,
+        .rgba8_buffer = &rgba8_buffer,
     });
     try expect(sut.is_mz700 == false);
     try expect((sut.status & STATUS_MODE.MZ800) == STATUS_MODE.MZ800);
 }
 
 test "set MZ-700 mode" {
-    const rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
+    var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
     const cgrom = [_]u8{0} ** 64;
     var sut = GDG_WHID65040_032.init(.{
         .cgrom = &cgrom,
-        .rgba8_buffer = rgba8_buffer,
+        .rgba8_buffer = &rgba8_buffer,
     });
 
     // Set MZ-800 mode
@@ -52,11 +52,11 @@ test "set MZ-700 mode" {
 }
 
 test "mem wr single write" {
-    const rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
+    var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
     const cgrom = [_]u8{0} ** 64;
     var sut = GDG_WHID65040_032.init(.{
         .cgrom = &cgrom,
-        .rgba8_buffer = rgba8_buffer,
+        .rgba8_buffer = &rgba8_buffer,
     });
 
     // Set MZ-800 mode, 320x200, 16 colors
@@ -80,11 +80,11 @@ test "mem wr single write" {
 }
 
 test "mem wr replace" {
-    const rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
+    var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
     const cgrom = [_]u8{0} ** 64;
     var sut = GDG_WHID65040_032.init(.{
         .cgrom = &cgrom,
-        .rgba8_buffer = rgba8_buffer,
+        .rgba8_buffer = &rgba8_buffer,
     });
 
     // Set MZ-800 mode, 320x200, 16 colors
@@ -119,11 +119,11 @@ test "mem wr replace" {
 }
 
 test "mem wr PSET" {
-    const rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
+    var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
     const cgrom = [_]u8{0} ** 64;
     var sut = GDG_WHID65040_032.init(.{
         .cgrom = &cgrom,
-        .rgba8_buffer = rgba8_buffer,
+        .rgba8_buffer = &rgba8_buffer,
     });
 
     // Set MZ-800 mode, 320x200, 16 colors
@@ -158,11 +158,11 @@ test "mem wr PSET" {
 }
 
 test "mem rd searching + mem wr PSET" {
-    const rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
+    var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
     const cgrom = [_]u8{0} ** 64;
     var sut = GDG_WHID65040_032.init(.{
         .cgrom = &cgrom,
-        .rgba8_buffer = rgba8_buffer,
+        .rgba8_buffer = &rgba8_buffer,
     });
 
     // Set MZ-800 mode, 320x200, 16 colors

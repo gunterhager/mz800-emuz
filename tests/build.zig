@@ -9,11 +9,13 @@ pub const Options = struct {
     target: ResolvedTarget,
     optimize: OptimizeMode,
     mod_chips: *Module,
+    mod_system: *Module,
 };
 
 pub fn build(b: *Build, opts: Options) void {
     const unit_tests = [_][]const u8{
         "gdg_whid65040_032",
+        "mz800",
     };
     const test_step = b.step("test", "Run unit tests");
     inline for (unit_tests) |name| {
@@ -24,6 +26,7 @@ pub fn build(b: *Build, opts: Options) void {
                 .target = opts.target,
                 .imports = &.{
                     .{ .name = "chips", .module = opts.mod_chips },
+                    .{ .name = "system", .module = opts.mod_system },
                 },
             }),
         });

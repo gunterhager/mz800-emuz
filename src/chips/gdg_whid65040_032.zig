@@ -47,7 +47,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         pub const Options = struct {
             cgrom: []const u8,
-            rgba8_buffer: [FRAMEBUFFER_SIZE_PIXEL]u32,
+            rgba8_buffer: []u32,
         };
 
         pub const DBUS = maskm(Bus, &cfg.pins.DBUS);
@@ -251,7 +251,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         /// RGBA8 buffer for displaying color graphics on screen.
         /// Uses 8bit color components.
-        rgba8_buffer: [FRAMEBUFFER_SIZE_PIXEL]u32,
+        rgba8_buffer: []u32,
 
         /// Indicates if machine is in MZ-700 mode. This is actually toggled by setting the DMD register.
         is_mz700: bool = false,
