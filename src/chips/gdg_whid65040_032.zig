@@ -286,6 +286,12 @@ pub fn Type(comptime cfg: TypeConfig) type {
             return self;
         }
 
+        fn resetRGBA8Buffer(self: *Self) void {
+            for (0..self.rgba8_buffer.len) |index| {
+                self.rgba8_buffer[index] = 0;
+            }
+        }
+
         /// Reset GDG instance
         pub fn reset(self: *Self) void {
             self.wf = 0;
@@ -302,7 +308,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
             self.plt_sw = 0;
             self.vram1 = std.mem.zeroes(@TypeOf((self.vram1)));
             self.vram2 = std.mem.zeroes(@TypeOf((self.vram2)));
-            self.rgba8_buffer = std.mem.zeroes(@TypeOf(self.rgba8_buffer));
+            self.resetRGBA8Buffer();
         }
 
         /// Execute one clock cycle

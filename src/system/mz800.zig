@@ -194,8 +194,8 @@ pub fn Type() type {
         /// Fill slice with 0x00, 0xff alternating
         fn fillMem(slice: []u8) void {
             for (0..slice.len) |index| {
-                const value = if ((index & 1) == 0) 0x00 else 0xff;
-                slice[index] = @intCast(value);
+                const value: u8 = if ((index & 1) == 0) 0x00 else 0xff;
+                slice[index] = value;
             }
         }
 
@@ -246,23 +246,23 @@ pub fn Type() type {
             // Soft reset: when pressing reset button while holding CTRL on keyboard
             if (soft) {
                 // All memory will be DRAM
-                self.mem.mapRAM(0x0000, MEM_CONFIG.MZ800.RAM_SIZE, &self.ram[0]);
+                self.mem.mapRAM(0x0000, MEM_CONFIG.MZ800.RAM_SIZE, &self.ram);
                 return;
             }
 
             // Hard reset: when powering on or resetting with reset button
             // Fill RAM with  0x00, 0xff alternating.
-            fillMem(&self.mem.ram);
+            fillMem(&self.ram);
 
             // According to SHARP Service Manual
-            self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, &self.rom.rom1);
-            self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
-            self.mem.mapRAM(0x2000, 0x6000, &self.ram[0x2000]);
+            self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, self.rom.rom1);
+            self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, self.rom.cgrom);
+            self.mem.mapRAM(0x2000, 0x6000, self.ram[0x2000..0x8000]);
             // VRAM is handled by GDG not regular memory mapping here
             self.vram_banked_in = true;
-            self.mem.mapRAM(0x8000, 0x4000, &self.ram[0x8000]);
-            self.mem.mapRAM(0xc000, 0x2000, &self.ram[0xc000]);
-            self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, &self.rom.rom2);
+            self.mem.mapRAM(0x8000, 0x4000, self.ram[0x8000..0xc000]);
+            self.mem.mapRAM(0xc000, 0x2000, self.ram[0xc000..0xe000]);
+            self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, self.rom.rom2);
         }
 
         /// Memory bank switching with IORQ
@@ -273,17 +273,17 @@ pub fn Type() type {
                     const MEM = IO_ADDR.WR.MEM;
                     switch (sw) {
                         MEM.SW0 => {
-                            self.mem.mapRAM(0x0000, 0x8000, &self.ram[0]);
+                            self.mem.mapRAM(0x0000, 0x8000, self.ram[0x0000..0x8000]);
                         },
                         MEM.SW1 => {
                             if (self.gdg.is_mz700) {
-                                self.mem.mapRAM(MEM_CONFIG.MZ700.VRAM_START, 0x3000, &self.ram[MEM_CONFIG.MZ700.VRAM_START]);
+                                self.mem.mapRAM(MEM_CONFIG.MZ700.VRAM_START, 0x3000, self.ram[MEM_CONFIG.MZ700.VRAM_START..(MEM_CONFIG.MZ700.VRAM_START + 0x3000)]);
                             } else {
-                                self.mem.mapRAM(0xe000, 0x2000, &self.ram[0x2000]);
+                                self.mem.mapRAM(0xe000, 0x2000, self.ram[0xe000..0x10000]);
                             }
                         },
                         MEM.SW2 => {
-                            self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, &self.rom.rom1);
+                            self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, self.rom.rom1);
                         },
                         MEM.SW3 => {
                             // Special treatment in MZ-700: VRAM in 0xd000-0xdfff, Key, Timer in 0xe000-0xe070
@@ -296,13 +296,13 @@ pub fn Type() type {
                         MEM.SW4 => {
                             self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, &self.rom.rom1);
                             if (self.gdg.is_mz700) {
-                                self.mem.mapRAM(0x1000, 0xd000, &self.ram[0x1000]);
+                                self.mem.mapRAM(0x1000, 0xd000, &self.ram[0x1000..0xe000]);
                             } else {
-                                self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
-                                self.mem.mapRAM(0x2000, 0xc000, &self.ram[0x2000]);
+                                self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, self.rom.cgrom);
+                                self.mem.mapRAM(0x2000, 0xc000, &self.ram[0x2000..0xe000]);
                             }
                             self.vram_banked_in = true;
-                            self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, &self.rom.rom2);
+                            self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, self.rom.rom2);
                         },
                         MEM.PROHIBIT => {
                             // Not implemented
@@ -317,11 +317,11 @@ pub fn Type() type {
                     const MEM = IO_ADDR.RD.MEM;
                     switch (sw) {
                         MEM.SW0 => {
-                            self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
+                            self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, self.rom.cgrom);
                             self.vram_banked_in = true;
                         },
                         MEM.SW1 => {
-                            self.mem.mapRAM(0x1000, 0x1000, &self.ram[0x1000]);
+                            self.mem.mapRAM(0x1000, 0x1000, &self.ram[0x1000..0x2000]);
                             self.vram_banked_in = false;
                         },
                         else => {},
