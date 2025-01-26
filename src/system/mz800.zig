@@ -98,6 +98,15 @@ pub fn Type() type {
     return struct {
         const Self = @This();
 
+        /// Runtime options
+        pub const Options = struct {
+            roms: struct {
+                rom1: []const u8,
+                cgrom: []const u8,
+                rom2: []const u8,
+            },
+        };
+
         pub const DISPLAY = struct {
             pub const WIDTH = 640;
             pub const HEIGHT = 200;
@@ -162,11 +171,11 @@ pub fn Type() type {
         /// ROM banks
         pub const ROM = struct {
             /// Monitor ROM part 1
-            rom1: []const u8,
+            rom1: [MEM_CONFIG.MZ800.ROM1_SIZE]u8,
             /// Character ROM
-            cgrom: []const u8,
+            cgrom: [MEM_CONFIG.MZ800.CGROM_SIZE]u8,
             /// Monitor ROM part 2
-            rom2: []const u8,
+            rom2: [MEM_CONFIG.MZ800.ROM2_SIZE]u8,
         };
 
         // MZ-800 emulator state
@@ -199,14 +208,14 @@ pub fn Type() type {
             }
         }
 
-        pub fn initInPlace(self: *Self) void {
+        pub fn initInPlace(self: *Self, opts: Options) void {
             self.* = .{
                 .bus = 0,
                 .cpu = Z80.init(),
                 .pio = Z80PIO.init(),
                 .ppi = PPI.init(),
                 .gdg = GDG.init(.{
-                    .cgrom = self.rom.cgrom,
+                    .cgrom = &self.rom.cgrom,
                     .rgba8_buffer = &self.fb,
                 }),
                 .mem = Memory.init(.{
@@ -218,17 +227,21 @@ pub fn Type() type {
                     .sticky_time = 2 * (1000 / 50) * 1000,
                 }),
                 .ram = [_]u8{0} ** MEM_CONFIG.MZ800.RAM_SIZE,
-                .rom = .{
-                    .rom1 = @embedFile("roms/MZ800_ROM1.bin"),
-                    .cgrom = @embedFile("roms/MZ800_CGROM.bin"),
-                    .rom2 = @embedFile("roms/MZ800_ROM2.bin"),
-                },
+                .rom = initRoms(opts),
                 .fb = std.mem.zeroes(@TypeOf(self.fb)),
                 .junk_page = std.mem.zeroes(@TypeOf(self.junk_page)),
                 .unmapped_page = [_]u8{0xFF} ** Memory.PAGE_SIZE,
             };
             // Hard reset memory mapping
             self.resetMemoryMap(false);
+        }
+
+        fn initRoms(opts: Options) ROM {
+            var rom: ROM = undefined;
+            cp(opts.roms.rom1, &rom.rom1);
+            cp(opts.roms.cgrom, &rom.cgrom);
+            cp(opts.roms.rom2, &rom.rom2);
+            return rom;
         }
 
         pub fn reset(self: *Self) void {
@@ -255,14 +268,14 @@ pub fn Type() type {
             fillMem(&self.ram);
 
             // According to SHARP Service Manual
-            self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, self.rom.rom1);
-            self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, self.rom.cgrom);
+            self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, &self.rom.rom1);
+            self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
             self.mem.mapRAM(0x2000, 0x6000, self.ram[0x2000..0x8000]);
             // VRAM is handled by GDG not regular memory mapping here
             self.vram_banked_in = true;
             self.mem.mapRAM(0x8000, 0x4000, self.ram[0x8000..0xc000]);
             self.mem.mapRAM(0xc000, 0x2000, self.ram[0xc000..0xe000]);
-            self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, self.rom.rom2);
+            self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, &self.rom.rom2);
         }
 
         /// Memory bank switching with IORQ
@@ -283,7 +296,7 @@ pub fn Type() type {
                             }
                         },
                         MEM.SW2 => {
-                            self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, self.rom.rom1);
+                            self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, &self.rom.rom1);
                         },
                         MEM.SW3 => {
                             // Special treatment in MZ-700: VRAM in 0xd000-0xdfff, Key, Timer in 0xe000-0xe070
@@ -298,11 +311,11 @@ pub fn Type() type {
                             if (self.gdg.is_mz700) {
                                 self.mem.mapRAM(0x1000, 0xd000, &self.ram[0x1000..0xe000]);
                             } else {
-                                self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, self.rom.cgrom);
+                                self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
                                 self.mem.mapRAM(0x2000, 0xc000, &self.ram[0x2000..0xe000]);
                             }
                             self.vram_banked_in = true;
-                            self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, self.rom.rom2);
+                            self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, &self.rom.rom2);
                         },
                         MEM.PROHIBIT => {
                             // Not implemented
@@ -317,7 +330,7 @@ pub fn Type() type {
                     const MEM = IO_ADDR.RD.MEM;
                     switch (sw) {
                         MEM.SW0 => {
-                            self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, self.rom.cgrom);
+                            self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
                             self.vram_banked_in = true;
                         },
                         MEM.SW1 => {

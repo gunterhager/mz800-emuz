@@ -20,7 +20,11 @@ export fn init() void {
     host.audio.init(.{});
     host.time.init();
     host.prof.init();
-    sys.initInPlace();
+    sys.initInPlace(.{ .roms = .{
+        .rom1 = @embedFile("system/roms/MZ800_ROM1.bin"),
+        .cgrom = @embedFile("system/roms/MZ800_CGROM.bin"),
+        .rom2 = @embedFile("system/roms/MZ800_ROM2.bin"),
+    } });
     host.gfx.init(.{ .display = sys.displayInfo() });
 }
 
