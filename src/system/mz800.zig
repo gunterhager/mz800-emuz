@@ -76,7 +76,7 @@ const GDG_PINS = gdg_whid65040_032.Pins{
     .WR = CPU_PINS.WR,
 };
 
-const Bus = u128;
+pub const Bus = u128;
 // Memory is mapped in 1K pages
 const Memory = memory.Type(.{ .page_size = 0x0400 });
 const Z80 = z80.Type(.{ .pins = CPU_PINS, .bus = Bus });
@@ -86,13 +86,14 @@ const GDG = gdg_whid65040_032.Type(.{ .pins = GDG_PINS, .bus = Bus });
 const KeyBuf = keybuf.Type(.{ .num_slots = 4 });
 const Audio = audio.Type(.{ .num_voices = 2 });
 
-const getData = Z80.getData;
-const setData = Z80.setData;
-const getAddr = Z80.getAddr;
+pub const getData = Z80.getData;
+pub const setData = Z80.setData;
+pub const getAddr = Z80.getAddr;
+pub const setAddr = Z80.setAddr;
 const MREQ = Z80.MREQ;
-const IORQ = Z80.IORQ;
-const RD = Z80.RD;
-const WR = Z80.WR;
+pub const IORQ = Z80.IORQ;
+pub const RD = Z80.RD;
+pub const WR = Z80.WR;
 
 pub fn Type() type {
     return struct {
@@ -279,7 +280,7 @@ pub fn Type() type {
         }
 
         /// Memory bank switching with IORQ
-        fn updateMemoryMap(self: *Self, bus: Bus) void {
+        pub fn updateMemoryMap(self: *Self, bus: Bus) void {
             const sw: u8 = @truncate(getAddr(bus));
             switch (bus & (RD | WR | IORQ)) {
                 (WR | IORQ) => {
@@ -290,7 +291,8 @@ pub fn Type() type {
                         },
                         MEM.SW1 => {
                             if (self.gdg.is_mz700) {
-                                self.mem.mapRAM(MEM_CONFIG.MZ700.VRAM_START, 0x3000, self.ram[MEM_CONFIG.MZ700.VRAM_START..(MEM_CONFIG.MZ700.VRAM_START + 0x3000)]);
+                                self.vram_banked_in = false;
+                                self.mem.mapRAM(MEM_CONFIG.MZ700.VRAM_START, 0x3000, self.ram[MEM_CONFIG.MZ700.VRAM_START..0x10000]);
                             } else {
                                 self.mem.mapRAM(0xe000, 0x2000, self.ram[0xe000..0x10000]);
                             }
@@ -309,10 +311,10 @@ pub fn Type() type {
                         MEM.SW4 => {
                             self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, &self.rom.rom1);
                             if (self.gdg.is_mz700) {
-                                self.mem.mapRAM(0x1000, 0xd000, &self.ram[0x1000..0xe000]);
+                                self.mem.mapRAM(0x1000, 0xd000, self.ram[0x1000..0xe000]);
                             } else {
                                 self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
-                                self.mem.mapRAM(0x2000, 0xc000, &self.ram[0x2000..0xe000]);
+                                self.mem.mapRAM(0x2000, 0xc000, self.ram[0x2000..0xe000]);
                             }
                             self.vram_banked_in = true;
                             self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, &self.rom.rom2);
@@ -334,7 +336,7 @@ pub fn Type() type {
                             self.vram_banked_in = true;
                         },
                         MEM.SW1 => {
-                            self.mem.mapRAM(0x1000, 0x1000, &self.ram[0x1000..0x2000]);
+                            self.mem.mapRAM(0x1000, 0x1000, self.ram[0x1000..0x2000]);
                             self.vram_banked_in = false;
                         },
                         else => {},
