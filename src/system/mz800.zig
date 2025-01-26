@@ -255,6 +255,19 @@ pub fn Type() type {
             self.cpu.reset();
         }
 
+        pub fn exec(self: *Self, micro_seconds: u32) u32 {
+            const CPU_CLK = frequencies.Frequencies.CPU_CLK;
+            const num_ticks = clock.microSecondsToTicks(CPU_CLK, micro_seconds);
+            _ = self;
+            // var bus = self.bus;
+            for (0..num_ticks) |_| {
+                // bus = self.tick(bus);
+            }
+            // self.bus = bus;
+            // self.updateKeyboard(micro_seconds);
+            return num_ticks;
+        }
+
         /// Reset the memory map depending on type of reset
         fn resetMemoryMap(self: *Self, soft: bool) void {
             // Soft reset: when pressing reset button while holding CTRL on keyboard
@@ -361,6 +374,7 @@ pub fn Type() type {
                     .width = DISPLAY.WIDTH,
                     .height = DISPLAY.HEIGHT,
                 },
+                .palette = null,
                 .orientation = .Landscape,
             };
         }

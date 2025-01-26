@@ -24,8 +24,8 @@
     // internet connectivity.
     .dependencies = .{
         .chipz = .{
-            .url = "git+https://github.com/gunterhager/chipz.git#89bd41438cdb3db00b17e09ecf94c9bb77263e15",
-            .hash = "1220d6a0161339455ceabb7df74248321aee2bb31f2aed3f2dfdccc4de6e084441c1",
+            .url = "git+https://github.com/gunterhager/chipz.git#27bdbf2e0bd661a71d51bc569b624d4f0cd34a43",
+            .hash = "12203911d05bc601170a7567080505f2c19ae8afccf4dc42119d9304930304b3f9c4",
         },
         .sokol = .{
             .url = "git+https://github.com/floooh/sokol-zig.git#8ea2604bdd0850b223ca61622aa48edfe035f244",

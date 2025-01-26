@@ -41,6 +41,8 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "chipz", .module = dep_chipz.module("chipz") },
             .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+            .{ .name = "chips", .module = mod_chips },
+            .{ .name = "system", .module = mod_system },
         },
     });
 

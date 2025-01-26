@@ -5,10 +5,10 @@ const sokol = @import("sokol");
 const sapp = sokol.app;
 const slog = sokol.log;
 const chipz = @import("chipz");
-const chips = chipz.chips;
 const host = chipz.host;
-
-const mz800 = @import("system").mz800;
+const chips = @import("chips");
+const system = @import("system");
+const mz800 = system.mz800;
 const MZ800 = mz800.Type();
 const frequencies = mz800.frequencies;
 

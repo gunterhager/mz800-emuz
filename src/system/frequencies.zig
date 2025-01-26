@@ -2,19 +2,19 @@
 /// All frequencies in Hz.
 pub const Frequencies = struct {
     /// Cursor blink
-    const CURSOR = osc556_frequency(1.5, 47, 10);
+    pub const CURSOR = osc556_frequency(1.5, 47, 10);
     /// Tempo (?)
-    const TEMPO = osc556_frequency(1.8, 18, 1);
+    pub const TEMPO = osc556_frequency(1.8, 18, 1);
     /// System clock speed (PAL)
-    const CLK0: comptime_float = 17.734475 * 1e6;
+    pub const CLK0: comptime_float = 17.734475 * 1e6;
     /// CPU clock (PAL)
-    const CPU_CLK: comptime_float = CLK0 / 5;
+    pub const CPU_CLK: comptime_float = CLK0 / 5;
     /// CKMS,  i8253 CH0
-    const CKMS: comptime_float = CLK0 / 16;
+    pub const CKMS: comptime_float = CLK0 / 16;
     /// Horizontal sync HSYN (PAL), i8253 CH1
-    const HSYN: comptime_float = CLK0 / 1136;
+    pub const HSYN: comptime_float = CLK0 / 1136;
     /// Vertical sync VSYN (PAL)
-    const VSYN: comptime_float = CLK0 / 312;
+    pub const VSYN: comptime_float = CLK0 / 312;
 
     /// Calculate oscillation frquency of OSC556 based on two resistors and a capacitor.
     /// r1, r2: kOhm
