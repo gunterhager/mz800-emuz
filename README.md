@@ -8,7 +8,7 @@ SHARP MZ-800 Emulator using Andre Weissflog's https://github.com/floooh/chipz em
 
 You can drop MZF files onto the emulator window to load and run them.
 
-Build and run (tested with zig 0.14.0-dev.2851+b074fb7dd):
+Build and run (tested with zig 0.14.0-dev.2987+183bb8b08):
 
 ```bash
 zig build run
