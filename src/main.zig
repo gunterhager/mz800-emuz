@@ -11,6 +11,8 @@ const system = @import("system");
 const mz800 = system.mz800;
 const MZ800 = mz800.Type();
 const frequencies = mz800.frequencies;
+const mzf = system.mzf;
+const MZF = mzf.Type();
 
 const name = "MZ-800";
 
@@ -82,15 +84,15 @@ export fn input(ev: ?*const sapp.Event) void {
 fn handleDroppedFiles() void {
     const num_of_files: usize = @intCast(sapp.getNumDroppedFiles());
     std.debug.print("🚨 Files dropped: {}\n", .{num_of_files});
-    for (0..num_of_files) |index| {
-        const path = sapp.getDroppedFilePath(@intCast(index));
-        std.debug.print("🚨 File dropped: {s}\n", .{path});
-        const data = fileLoad(path) catch |err| {
-            std.debug.print("{?}", .{err});
-            return;
-        };
-        std.debug.print("🚨 Read {} bytes.\n", .{data.?.len});
-    }
+    var obj_file: MZF = undefined;
+    const path = sapp.getDroppedFilePath(0);
+    std.debug.print("🚨 Loading file: {s}\n", .{path});
+    obj_file.load(std.fs.cwd(), path) catch |err| {
+        std.debug.print("Error loading file '{s}': {}\n", .{ path, err });
+    };
+    std.debug.print("🚨 Name: {s}\n", .{obj_file.header.name});
+    std.debug.print("🚨 Loading address: 0x{x:0>4}\n", .{obj_file.header.loading_address});
+    std.debug.print("🚨 Starting address: 0x{x:0>4}\n", .{obj_file.header.start_address});
 }
 
 fn fileLoad(path: []const u8) !?[]const u8 {
