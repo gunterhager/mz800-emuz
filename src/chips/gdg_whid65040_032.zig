@@ -375,40 +375,42 @@ pub fn Type(comptime cfg: TypeConfig) type {
                                 // Scroll width register
                                 IO_ADDR.WR.SW => {
                                     // Bit 7 can't be set
-                                    self.sw = value & (~(1 << 7));
+                                    self.sw = value & (~@as(u8, 1 << 7));
                                 },
                                 // Scroll start address register
                                 IO_ADDR.WR.SSA => {
                                     // Bit 7 can't be set
-                                    self.ssa = value & (~(1 << 7));
+                                    self.ssa = value & (~@as(u8, 1 << 7));
                                 },
                                 // Scroll end address register
                                 IO_ADDR.WR.SEA => {
                                     // Bit 7 can't be set
-                                    self.sea = value & (~(1 << 7));
+                                    self.sea = value & (~@as(u8, 1 << 7));
                                 },
                                 // Border color register
                                 IO_ADDR.WR.BCOL => {
                                     // Only lower nibble can be set
                                     self.bcol = value & 0x0f;
                                 },
+                                else => {},
                             }
                         },
                         IO_ADDR.WR.PAL => {
                             // Set palette switch register
                             if ((value & PAL_SW) != 0) {
                                 // Two lowest bits contain the palette switch value.
-                                self.plt_sw = value & ((1 << 1) | 1);
+                                self.plt_sw = @truncate(value);
                             } else {
                                 // High 3 bits contain palette register index
-                                const index: comptime_int = value >> 4;
+                                const index = value >> 4;
                                 // Lower nibble contains color code in IRGB
-                                const color: u4 = value & 0x0f;
+                                const color: u4 = @truncate(value);
                                 // Set palette register to color
                                 self.plt[index] = color;
                                 self.plt_rgba8[index] = COLOR.all[color];
                             }
                         },
+                        else => {},
                     }
                 },
                 else => {},
@@ -646,11 +648,11 @@ pub fn Type(comptime cfg: TypeConfig) type {
             const color_code = self.vram1[color_addr];
             var fg_color_code = (color_code & 0x70) >> 4;
             // All colors except black should be high intensity
-            fg_color_code = if (fg_color_code == 0) 0 else fg_color_code | (1 << 7);
+            fg_color_code = if (fg_color_code == 0) 0 else fg_color_code | (1 << 3);
             const fg_color = COLOR.all[fg_color_code];
             var bg_color_code = color_code & 0x07;
             // All colors except black should be high intensity
-            bg_color_code = if (bg_color_code == 0) 0 else bg_color_code | (1 << 7);
+            bg_color_code = if (bg_color_code == 0) 0 else bg_color_code | (1 << 3);
             const bg_color = COLOR.all[bg_color_code];
 
             // Use bit 7 of color code to select start address in character ROM.
@@ -707,7 +709,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
             const hicolor = (self.dmd & DMD_MODE.HICOLOR) != 0;
 
             // Pixel index in rgba8_buffer, in lores we write 2 pixels for each lores pixel
-            var index: u32 = addr * 8 * (if (hires) @as(u8, 1) else @as(u8, 2));
+            var index: usize = @as(u32, addr) * 8 * (if (hires) @as(u8, 1) else @as(u8, 2));
 
             // VRAM address check
             if (addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {

@@ -93,16 +93,7 @@ fn handleDroppedFiles() void {
     std.debug.print("🚨 Name: {s}\n", .{obj_file.header.name});
     std.debug.print("🚨 Loading address: 0x{x:0>4}\n", .{obj_file.header.loading_address});
     std.debug.print("🚨 Starting address: 0x{x:0>4}\n", .{obj_file.header.start_address});
-}
-
-fn fileLoad(path: []const u8) !?[]const u8 {
-    const allocator = gpa.allocator();
-    var file_data: ?[]const u8 = null;
-    file_data = fs.cwd().readFileAlloc(allocator, path, 0x10000) catch |err| {
-        std.debug.print("Error loading file '{s}'", .{path});
-        return err;
-    };
-    return file_data;
+    sys.load(obj_file);
 }
 
 pub fn main() void {

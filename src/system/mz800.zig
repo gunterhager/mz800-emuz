@@ -17,6 +17,8 @@ const maskm = common.bitutils.maskm;
 const cp = common.utils.cp;
 const audio = common.audio;
 const DisplayInfo = common.glue.DisplayInfo;
+const mzf = @import("mzf.zig");
+const MZF = mzf.Type();
 
 /// Z80 bus definitions
 const CPU_PINS = z80.Pins{
@@ -92,6 +94,7 @@ pub const getAddr = Z80.getAddr;
 pub const setAddr = Z80.setAddr;
 const MREQ = Z80.MREQ;
 pub const IORQ = Z80.IORQ;
+pub const ABUS = Z80.ABUS;
 pub const RD = Z80.RD;
 pub const WR = Z80.WR;
 
@@ -158,10 +161,13 @@ pub fn Type() type {
                 pub const VRAM_START: u16 = 0x8000;
                 pub const VRAM_LORES_SIZE: u16 = 0x2000;
                 pub const VRAM_HIRES_SIZE: u16 = 0x4000;
+                pub const VRAM_LORES_END = VRAM_START + VRAM_LORES_SIZE;
+                pub const VRAM_HIRES_END = VRAM_START + VRAM_HIRES_SIZE;
             };
             pub const MZ700 = struct {
                 pub const VRAM_START: u16 = 0xd000;
                 pub const VRAM_SIZE: u16 = 0x1000;
+                pub const VRAM_END: u16 = VRAM_START + VRAM_SIZE;
 
                 // Memory mapped IO for MZ-700
                 pub const IO_START: u16 = 0xe000;
@@ -181,15 +187,32 @@ pub fn Type() type {
 
         // MZ-800 emulator state
         bus: Bus = 0,
+
+        // CPU Z80A
         cpu: Z80,
+
+        // PIO Z80 PIO, parallel I/O unit
         pio: Z80PIO,
+
+        // PPI i8255, keyboard and cassette driver
         ppi: PPI,
+
+        // CTC i8253, programmable counter/timer
+        // TODO: implement CTC
+
+        // GDG WHID 65040-032, CRT controller
         gdg: GDG,
+
+        // PSG SN 76489 AN, sound generator
+        // TODO: implement PSG
+
         video: struct {
             h_tick: u16 = 0,
             v_count: u16 = 0,
         } = .{},
+
         mem: Memory,
+
         key_buf: KeyBuf,
 
         /// Memory buffers for 64K RAM
@@ -258,14 +281,196 @@ pub fn Type() type {
         pub fn exec(self: *Self, micro_seconds: u32) u32 {
             const CPU_CLK = frequencies.Frequencies.CPU_CLK;
             const num_ticks = clock.microSecondsToTicks(CPU_CLK, micro_seconds);
-            _ = self;
-            // var bus = self.bus;
+            var bus = self.bus;
             for (0..num_ticks) |_| {
-                // bus = self.tick(bus);
+                bus = self.tick(bus);
             }
-            // self.bus = bus;
+            self.bus = bus;
             // self.updateKeyboard(micro_seconds);
             return num_ticks;
+        }
+
+        pub fn tick(self: *Self, in_bus: Bus) Bus {
+            var bus = in_bus;
+
+            // Tick CPU
+            bus = self.cpu.tick(bus);
+
+            // Memory request
+            if ((bus & MREQ) != 0) {
+                const addr = getAddr(bus);
+
+                // MZ-700 VRAM
+                if (self.isMZ700VRAMAddr(addr)) {
+                    const vram_addr = addr - MEM_CONFIG.MZ700.VRAM_START;
+                    if ((bus & RD) != 0) {
+                        const data = self.gdg.mem_rd(vram_addr);
+                        bus = setData(bus, data);
+                    } else if ((bus & WR) != 0) {
+                        const data = getData(bus);
+                        self.gdg.mem_wr(vram_addr, data);
+                    }
+                }
+                // MZ-800 VRAM
+                else if (self.isMZ800VRAMAddr(addr)) {
+                    const vram_addr = addr - MEM_CONFIG.MZ800.VRAM_START;
+                    if ((bus & RD) != 0) {
+                        const data = self.gdg.mem_rd(vram_addr);
+                        bus = setData(bus, data);
+                    } else if ((bus & WR) != 0) {
+                        const data = getData(bus);
+                        self.gdg.mem_wr(vram_addr, data);
+                    }
+                }
+                // MZ-700 memory mapped IO
+                else if (self.gdg.is_mz700 and isInRange(addr, MEM_CONFIG.MZ700.IO_START, MEM_CONFIG.MZ700.IO_END)) {
+                    bus = self.mz700TranslateIOREQ(bus);
+                }
+                // Other memory
+                else {
+                    if ((bus & RD) != 0) {
+                        bus = setData(bus, self.mem.rd(addr));
+                    } else if ((bus & WR) != 0) {
+                        self.mem.wr(addr, getData(bus));
+                    }
+                }
+            }
+            // IO request
+            else if (((bus & Z80.IORQ) != 0) and (bus & (RD | WR)) != 0) {
+                bus = self.iorq(bus);
+            }
+
+            // Tick video system
+            // bus = self.tickVideo(bus);
+
+            return bus;
+        }
+
+        pub fn load(self: *Self, obj_file: MZF) void {
+            const start = obj_file.header.start_address;
+            const end = obj_file.header.file_length;
+            for (0..end) |index| {
+                const data = obj_file.data[index];
+                const addr = start + @as(u16, @truncate(index));
+                self.mem.wr(addr, data);
+            }
+            self.cpu.reset();
+            self.cpu.prefetch(start);
+        }
+
+        fn isInRange(number: u16, lower_bound: u16, upper_bound: u16) bool {
+            return (number >= lower_bound) and (number <= upper_bound);
+        }
+
+        fn isMZ700VRAMAddr(self: *Self, addr: u16) bool {
+            if (!self.vram_banked_in) return false;
+            if (!self.gdg.is_mz700) return false;
+            return (addr >= MEM_CONFIG.MZ700.VRAM_START) and (addr < MEM_CONFIG.MZ700.VRAM_END);
+        }
+
+        fn isMZ800VRAMAddr(self: *Self, addr: u16) bool {
+            if (!self.vram_banked_in) return false;
+            if (self.gdg.is_mz700) return false;
+            if (addr < MEM_CONFIG.MZ800.VRAM_START) return false;
+            const hires = (self.gdg.dmd & GDG.DMD_MODE.HIRES) != 0;
+            return addr < (if (hires) MEM_CONFIG.MZ800.VRAM_HIRES_END else MEM_CONFIG.MZ800.VRAM_LORES_END);
+        }
+
+        fn mz700TranslateIOREQ(self: *Self, in_bus: Bus) Bus {
+            var bus = in_bus;
+            var io_addr: u16 = 0;
+            switch (bus & ABUS | RD | WR) {
+                // i8255
+                MEM_CONFIG.MZ700.IO_START | WR => io_addr = 0xd0,
+                MEM_CONFIG.MZ700.IO_START + 0x01 | RD => io_addr = 0xd1,
+                MEM_CONFIG.MZ700.IO_START + 0x02 | WR => io_addr = 0xd2,
+                MEM_CONFIG.MZ700.IO_START + 0x02 | RD => io_addr = 0xd2,
+                MEM_CONFIG.MZ700.IO_START + 0x03 | WR => io_addr = 0xd3,
+
+                // i8253
+                MEM_CONFIG.MZ700.IO_START + 0x04 | WR => io_addr = 0xd4,
+                MEM_CONFIG.MZ700.IO_START + 0x04 | RD => io_addr = 0xd4,
+                MEM_CONFIG.MZ700.IO_START + 0x05 | WR => io_addr = 0xd5,
+                MEM_CONFIG.MZ700.IO_START + 0x05 | RD => io_addr = 0xd5,
+                MEM_CONFIG.MZ700.IO_START + 0x06 | WR => io_addr = 0xd6,
+                MEM_CONFIG.MZ700.IO_START + 0x06 | RD => io_addr = 0xd6,
+                MEM_CONFIG.MZ700.IO_START + 0x07 | WR => io_addr = 0xd7,
+
+                // Implementation of MZ-700 0xe008 is a bit unclear
+                // TODO: clarify MZ-700 write to 0xe008 (mem mapped IO)
+                MEM_CONFIG.MZ700.IO_START + 0x08 | WR => io_addr = 0xd8,
+                MEM_CONFIG.MZ700.IO_START + 0x08 | RD => io_addr = 0xce,
+
+                else => {},
+            }
+
+            if (io_addr != 0) {
+                bus &= ~Z80.MREQ;
+                bus |= Z80.IORQ;
+                bus = setAddr(bus, io_addr);
+            }
+
+            return self.iorq(bus);
+        }
+
+        fn iorq(self: *Self, in_bus: Bus) Bus {
+            var bus = in_bus;
+
+            // Check only the lower byte of the address
+            const addr = getAddr(bus) & 0xff;
+
+            switch (addr) {
+                // Serial IO
+                0xb0...0xb3 => {
+                    std.debug.panic("Serial IO not implemented", .{});
+                },
+                // GDG WHID 65040-032, CRT controller
+                0xcc...0xcf => {
+                    bus = self.gdg.tick(bus);
+                },
+                // PPI i8255, keyboard and cassette driver
+                0xd0...0xd3 => {
+                    bus = self.ppi.tick(bus);
+                },
+                // CTC i8253, programmable counter/timer
+                0xd4...0xd7 => {
+                    std.debug.panic("i8253 not implemented", .{});
+                },
+                // FDC, floppy disc controller
+                0xd8...0xdf => {
+                    std.debug.panic("FDC not implemented", .{});
+                },
+                // GDG WHID 65040-032, memory bank switch
+                0xe0...0xe6 => {
+                    self.updateMemoryMap(bus);
+                },
+
+                0xf0...0xf1 => {
+                    // GDG WHID 65040-032, Palette register (write only)
+                    if ((addr == 0xf0) and ((bus & WR) != 0)) {
+                        bus = self.gdg.tick(bus);
+                    }
+                    // Joystick (read only)
+                    else if ((bus & RD) != 0) {
+                        std.debug.panic("Joystick not implemented", .{});
+                    }
+                },
+                // PSG SN 76489 AN, sound generator
+                0xf2 => {
+                    std.debug.panic("PSG not implemented", .{});
+                },
+                // QDC, quick disk controller
+                0xf4...0xf7 => {
+                    std.debug.panic("QDC not implemented", .{});
+                },
+                // PIO Z80 PIO, parallel I/O unit
+                0xfc...0xff => {
+                    bus = self.pio.tick(bus);
+                },
+                else => {},
+            }
+
+            return bus;
         }
 
         /// Reset the memory map depending on type of reset
