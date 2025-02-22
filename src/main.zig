@@ -98,9 +98,8 @@ fn handleDroppedFiles() void {
 
 pub fn main() void {
     const display = MZ800.displayInfo(null);
-    const border = host.gfx.DEFAULT_BORDER;
-    const width = 2 * display.view.width + border.left + border.right;
-    const height = 2 * display.view.height + border.top + border.bottom;
+    const width = display.view.width;
+    const height = 2 * display.view.height;
     std.debug.print("🚨 Display: {}x{}\n", .{ width, height });
     sapp.run(.{
         .init_cb = init,

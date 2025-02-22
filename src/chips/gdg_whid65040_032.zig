@@ -570,7 +570,6 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         /// Write a byte to VRAM. What gets actually written depends on the
         /// write format register of the GDG and the display mode.
-        /// Pixel data will also be written to the RGBA8 buffer.
         pub fn mem_wr(self: *Self, addr: u16, data: u8) void {
             if (self.is_mz700) {
                 if ((self.wf != RF_MODE.PLANE_I) or (addr > VRAM_MAX_MZ700_ADDR)) {
@@ -623,8 +622,6 @@ pub fn Type(comptime cfg: TypeConfig) type {
                     }
                 }
             }
-            // Decode VRAM into RGBA8 buffer
-            self.decode_vram(addr);
         }
 
         /// Decode one byte of VRAM into the RGBA8 buffer.
@@ -659,7 +656,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
             const use_alternate_characters = (color_code & (1 << 7)) != 0;
 
             // Convert character code to address offset in character ROM.
-            const character_code = self.vram1[character_code_addr];
+            const character_code: u16 = self.vram1[character_code_addr];
             // Each character consists of 8 byte
             var character_addr: u16 = character_code * 8;
             if (use_alternate_characters) {

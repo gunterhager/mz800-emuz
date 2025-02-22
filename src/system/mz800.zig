@@ -2,7 +2,9 @@
 
 const std = @import("std");
 const chipz = @import("chipz");
-const frequencies = @import("frequencies.zig");
+const clock_dividers = @import("frequencies.zig").clock_dividers;
+const frequencies = @import("frequencies.zig").frequencies;
+const video = @import("video.zig").video;
 const gdg_whid65040_032 = @import("chips").gdg_whid65040_032;
 const z80 = chipz.chips.z80;
 const z80pio = chipz.chips.z80pio;
@@ -112,10 +114,10 @@ pub fn Type() type {
         };
 
         pub const DISPLAY = struct {
-            pub const WIDTH = 640;
-            pub const HEIGHT = 200;
+            pub const WIDTH = video.display.width;
+            pub const HEIGHT = video.display.height;
             pub const FB_WIDTH = 1024;
-            pub const FB_HEIGHT = 256;
+            pub const FB_HEIGHT = 512;
             pub const FB_SIZE = FB_WIDTH * FB_HEIGHT;
         };
 
@@ -207,8 +209,9 @@ pub fn Type() type {
         // TODO: implement PSG
 
         video: struct {
-            h_tick: u16 = 0,
-            v_count: u16 = 0,
+            tick: usize = 0,
+            h_tick: usize = 0,
+            v_count: usize = 0,
         } = .{},
 
         mem: Memory,
@@ -279,11 +282,14 @@ pub fn Type() type {
         }
 
         pub fn exec(self: *Self, micro_seconds: u32) u32 {
-            const CPU_CLK = frequencies.Frequencies.CPU_CLK;
-            const num_ticks = clock.microSecondsToTicks(CPU_CLK, micro_seconds);
             var bus = self.bus;
-            for (0..num_ticks) |_| {
-                bus = self.tick(bus);
+            const CLK0 = frequencies.CLK0;
+            const num_ticks = clock.microSecondsToTicks(CLK0, micro_seconds);
+            for (0..num_ticks) |ticks| {
+                if ((ticks % clock_dividers.CPU_CLK) == 0) {
+                    bus = self.tick(bus);
+                }
+                bus = self.videoTick(bus);
             }
             self.bus = bus;
             // self.updateKeyboard(micro_seconds);
@@ -340,10 +346,65 @@ pub fn Type() type {
                 bus = self.iorq(bus);
             }
 
-            // Tick video system
-            // bus = self.tickVideo(bus);
+            return bus;
+        }
+
+        fn videoTick(self: *Self, bus: Bus) Bus {
+            self.video.tick += 1;
+            if ((self.video.tick % video.screen.frame) == 0) {
+                self.video.tick = 0;
+            }
+            self.video.h_tick += 1;
+            if ((self.video.h_tick % video.screen.horizontal.line) == 0) {
+                self.video.h_tick = 0;
+                self.video.v_count += 1;
+                if ((self.video.v_count % video.screen.height) == 0) {
+                    self.video.v_count = 0;
+                }
+            }
+
+            // Convert to coordinates if beam is in visible area
+            if (videoHTickToFrameX(self.video.h_tick)) |x| {
+                if (videoTickToFrameY(self.video.tick)) |y| {
+                    // std.debug.print("🚨 Beam: ({}/{})\n", .{ x, y });
+
+                    // In border area
+                    if ((x < video.border.left) or (x >= video.border.left + video.canvas.width) or (y < video.border.top) or (y >= video.border.top + video.canvas.height)) {
+                        const index = framebufferIndex(x, y);
+                        const color = GDG.COLOR.all[self.gdg.bcol];
+                        self.fb[index] = color;
+                        // std.debug.print("🚨 Border: ({}/{}) 0x{x}\n", .{ x, y, color });
+                    }
+                    // if in border area
+                    // Draw pixel in border color
+
+                    // else
+                    // Decode VRAM for coordinates
+                    // if MZ-700 mode
+                    // Decode VRAM characters for screen coordinates
+                    // else
+                    // Decode VRAM for coordinates
+                }
+            }
 
             return bus;
+        }
+
+        inline fn videoHTickToFrameX(h_tick: usize) ?usize {
+            if (h_tick < video.screen.horizontal.video_enable_start) return null;
+            const x = h_tick - video.screen.horizontal.video_enable_start;
+            return if (x < video.screen.horizontal.video_enable) x else null;
+        }
+
+        inline fn videoTickToFrameY(video_tick: usize) ?usize {
+            if (video_tick < video.screen.vertical.video_enable_start) return null;
+            const y_tick = video_tick - video.screen.vertical.video_enable_start;
+            const y = y_tick / video.screen.horizontal.line;
+            return if (y_tick < video.screen.vertical.video_enable) y else null;
+        }
+
+        inline fn framebufferIndex(x: usize, y: usize) usize {
+            return y * DISPLAY.FB_WIDTH + x;
         }
 
         pub fn load(self: *Self, obj_file: MZF) void {
