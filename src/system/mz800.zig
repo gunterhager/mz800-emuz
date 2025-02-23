@@ -387,7 +387,9 @@ pub fn Type() type {
                             // We decode in 8 pixel batches
                             const canvas_width: u16 = video.canvas.width;
                             const width: u16 = (if (self.gdg.isHires()) canvas_width else canvas_width / 2) / 8;
-                            const addr: u16 = @as(u16, @intCast(canvas_y)) * width + @as(u16, @intCast(canvas_x));
+                            const row_addr: u16 = @as(u16, @intCast(canvas_y)) * width;
+                            const col_addr: u16 = @as(u16, @intCast(canvas_x)) / 8;
+                            const addr: u16 = row_addr + col_addr;
                             self.gdg.decode_vram_mz800(addr, @intCast(index));
                         }
                     }
