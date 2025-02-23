@@ -431,6 +431,14 @@ pub fn Type(comptime cfg: TypeConfig) type {
             }
         }
 
+        pub fn isHires(self: *Self) bool {
+            return (self.dmd & DMD_MODE.HIRES) != 0;
+        }
+
+        pub fn isHicolor(self: *Self) bool {
+            return (self.dmd & DMD_MODE.HICOLOR) != 0;
+        }
+
         /// Translate address bus to VRAM addresses in hires mode.
         fn hires_vram_addr(addr: u16) u16 {
             // In hires VRAM addresses are spread over two planes.
@@ -455,8 +463,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
                     return self.vram1[addr];
                 }
             } else {
-                const hires = (self.dmd & DMD_MODE.HIRES) != 0;
-                const hicolor = (self.dmd & DMD_MODE.HICOLOR) != 0;
+                const hires = self.isHires();
+                const hicolor = self.isHicolor();
 
                 if (addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {
                     return ILLEGAL_READ_VALUE;
@@ -578,8 +586,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
                     self.vram1[addr] = data;
                 }
             } else {
-                const hires = (self.dmd & DMD_MODE.HIRES) != 0;
-                const hicolor = (self.dmd & DMD_MODE.HICOLOR) != 0;
+                const hires = self.isHires();
+                const hicolor = self.isHicolor();
 
                 if (addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {
                     return;
@@ -624,17 +632,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
             }
         }
 
-        /// Decode one byte of VRAM into the RGBA8 buffer.
-        fn decode_vram(self: *Self, addr: u16) void {
-            if (self.is_mz700) {
-                self.decode_vram_mz700(addr);
-            } else {
-                self.decode_vram_mz800(addr);
-            }
-        }
-
         /// Decode one byte of VRAM into the RGBA8 buffer in MZ-700 mode.
-        fn decode_vram_mz700(self: *Self, addr: u16) void {
+        pub fn decode_vram_mz700(self: *Self, addr: u16, fb_origin: u32) void {
             // Convert addr to address offsets in character VRAM and color VRAM
             // Character range: 0x0000 - 0x03f7
             const character_code_addr: u16 = if (addr >= 0x0800) (addr - 0x0800) else addr;
@@ -684,6 +683,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
             for (0..8) |char_byte_index| {
                 const char_byte = self.cgrom[character_addr + char_byte_index];
                 // Pixel index in rgba8_buffer
+                _ = fb_origin; // Use framebuffer address
                 var index: u32 = character_pixel_addr;
                 const offset: u32 = @as(u32, @intCast(char_byte_index)) * line_width;
                 for (0..8) |bit| {
@@ -701,12 +701,11 @@ pub fn Type(comptime cfg: TypeConfig) type {
         }
 
         /// Decode one byte of VRAM into the RGBA8 buffer in MZ-800 mode.
-        fn decode_vram_mz800(self: *Self, addr: u16) void {
-            const hires = (self.dmd & DMD_MODE.HIRES) != 0;
-            const hicolor = (self.dmd & DMD_MODE.HICOLOR) != 0;
-
-            // Pixel index in rgba8_buffer, in lores we write 2 pixels for each lores pixel
-            var index: usize = @as(u32, addr) * 8 * (if (hires) @as(u8, 1) else @as(u8, 2));
+        /// VRAM addr starts at 0x0.
+        /// fb_index is the index in the framebuffer where the 8 pixels should be set.
+        pub fn decode_vram_mz800(self: *Self, addr: u16, fb_index: u32) void {
+            const hires = self.isHires();
+            const hicolor = self.isHicolor();
 
             // VRAM address check
             if (addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {
@@ -732,6 +731,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
             // Each bit represents 1 pixel. The color is determined by combining bits of
             // each plane.
             // We need to set one byte of RGBA8 buffer for each VRAM bit (2 bytes in 320x200 mode)
+            var index = fb_index;
             for (0..8) |bit_index| {
                 const bit: u3 = @intCast(bit_index);
                 // Combine bits of each plane into a byte

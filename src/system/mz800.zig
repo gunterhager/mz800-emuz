@@ -119,6 +119,7 @@ pub fn Type() type {
             pub const FB_WIDTH = 1024;
             pub const FB_HEIGHT = 512;
             pub const FB_SIZE = FB_WIDTH * FB_HEIGHT;
+            pub const FB_CANVAS_ORIGIN = video.border.top * DISPLAY.FB_WIDTH + video.border.left;
         };
 
         /// IO Addresses grouped by OUT and IN
@@ -366,24 +367,30 @@ pub fn Type() type {
             // Convert to coordinates if beam is in visible area
             if (videoHTickToFrameX(self.video.h_tick)) |x| {
                 if (videoTickToFrameY(self.video.tick)) |y| {
-                    // std.debug.print("🚨 Beam: ({}/{})\n", .{ x, y });
+                    const index = framebufferIndex(x, y);
 
                     // In border area
                     if ((x < video.border.left) or (x >= video.border.left + video.canvas.width) or (y < video.border.top) or (y >= video.border.top + video.canvas.height)) {
-                        const index = framebufferIndex(x, y);
                         const color = GDG.COLOR.all[self.gdg.bcol];
                         self.fb[index] = color;
-                        // std.debug.print("🚨 Border: ({}/{}) 0x{x}\n", .{ x, y, color });
                     }
-                    // if in border area
-                    // Draw pixel in border color
-
-                    // else
-                    // Decode VRAM for coordinates
-                    // if MZ-700 mode
-                    // Decode VRAM characters for screen coordinates
-                    // else
-                    // Decode VRAM for coordinates
+                    // In canvas area
+                    else {
+                        const canvas_x = x - video.border.left;
+                        const canvas_y = y - video.border.top;
+                        // Decode MZ-700 VRAM
+                        if (self.gdg.is_mz700) {
+                            // Decode VRAM character codes for screen coordinates
+                        }
+                        // Decode MZ-800 VRAM
+                        else if ((canvas_x % 8) == 0) {
+                            // We decode in 8 pixel batches
+                            const canvas_width: u16 = video.canvas.width;
+                            const width: u16 = (if (self.gdg.isHires()) canvas_width else canvas_width / 2) / 8;
+                            const addr: u16 = @as(u16, @intCast(canvas_y)) * width + @as(u16, @intCast(canvas_x));
+                            self.gdg.decode_vram_mz800(addr, @intCast(index));
+                        }
+                    }
                 }
             }
 
