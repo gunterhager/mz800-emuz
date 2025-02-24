@@ -379,8 +379,14 @@ pub fn Type() type {
                         const canvas_x = x - video.border.left;
                         const canvas_y = y - video.border.top;
                         // Decode MZ-700 VRAM
-                        if (self.gdg.is_mz700) {
-                            // Decode VRAM character codes for screen coordinates
+                        if (self.gdg.is_mz700 and ((canvas_x % 16) == 0)) {
+                            // Decode VRAM character codes for screen coordinates (40x25 characters)
+                            const row_addr: u16 = @intCast((canvas_y / 8) * 40);
+                            const col_addr: u16 = @intCast(canvas_x / 16);
+                            const addr: u16 = row_addr + col_addr;
+                            const char_byte_index = canvas_y % 8;
+                            // std.debug.print("🚨 mz700: canvas x/y: ({}/{}), char x/y ({}/{}), char_byte_index: {}, addr: {}\n", .{ canvas_x, canvas_y, canvas_x / 16, canvas_y / 8, char_byte_index, addr });
+                            self.gdg.decode_vram_mz700(addr, char_byte_index, @intCast(index));
                         }
                         // Decode MZ-800 VRAM
                         else if ((canvas_x % 8) == 0) {
