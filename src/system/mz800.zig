@@ -378,23 +378,29 @@ pub fn Type() type {
                         const canvas_x = x - video.border.left;
                         const canvas_y = y - video.border.top;
                         // Decode MZ-700 VRAM
-                        if (self.gdg.is_mz700 and ((canvas_x % 16) == 0)) {
-                            // Decode VRAM character codes for screen coordinates (40x25 characters)
-                            const row_addr: u16 = @intCast((canvas_y / 8) * 40);
-                            const col_addr: u16 = @intCast(canvas_x / 16);
-                            const addr: u16 = row_addr + col_addr;
-                            const char_byte_index = canvas_y % 8;
-                            self.gdg.decode_vram_mz700(addr, char_byte_index, @intCast(index));
+                        if (self.gdg.is_mz700) {
+                            if ((canvas_x % 16) == 0) {
+                                // Decode VRAM character codes for screen coordinates (40x25 characters)
+                                const row_addr: u16 = @intCast((canvas_y / 8) * 40);
+                                const col_addr: u16 = @intCast(canvas_x / 16);
+                                const addr: u16 = row_addr + col_addr;
+                                const char_byte_index = canvas_y % 8;
+                                self.gdg.decode_vram_mz700(addr, char_byte_index, @intCast(index));
+                            }
                         }
                         // Decode MZ-800 VRAM
-                        else if (!self.gdg.is_mz700 and (canvas_x % 8) == 0) {
-                            // We decode in 8 pixel batches
-                            const canvas_width: u16 = video.canvas.width;
-                            const width: u16 = (if (self.gdg.isHires()) canvas_width else canvas_width / 2) / 8;
-                            const row_addr: u16 = @as(u16, @intCast(canvas_y)) * width;
-                            const col_addr: u16 = @as(u16, @intCast(canvas_x)) / 8;
-                            const addr: u16 = row_addr + col_addr;
-                            self.gdg.decode_vram_mz800(addr, @intCast(index));
+                        else {
+                            const pixel_width: u16 = if (self.gdg.isHires()) 1 else 2;
+                            const adjusted_x: u16 = @as(u16, @intCast(canvas_x)) / pixel_width;
+                            if ((adjusted_x % 8) == 0) {
+                                // We decode in 8 pixel batches
+                                const canvas_width: u16 = video.canvas.width / pixel_width;
+                                const width: u16 = canvas_width / 8;
+                                const row_addr: u16 = @as(u16, @intCast(canvas_y)) * width;
+                                const col_addr: u16 = adjusted_x / 8;
+                                const addr: u16 = row_addr + col_addr;
+                                self.gdg.decode_vram_mz800(addr, @intCast(index));
+                            }
                         }
                     }
                 }
