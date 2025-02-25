@@ -284,7 +284,7 @@ pub fn Type() type {
 
         pub fn exec(self: *Self, micro_seconds: u32) u32 {
             var bus = self.bus;
-            const CLK0 = frequencies.CLK0;
+            const CLK0: u64 = @intFromFloat(frequencies.CLK0);
             const num_ticks = clock.microSecondsToTicks(CLK0, micro_seconds);
             for (0..num_ticks) |ticks| {
                 if ((ticks % clock_dividers.CPU_CLK) == 0) {
@@ -371,8 +371,7 @@ pub fn Type() type {
 
                     // In border area
                     if ((x < video.border.left) or (x >= video.border.left + video.canvas.width) or (y < video.border.top) or (y >= video.border.top + video.canvas.height)) {
-                        const color = GDG.COLOR.all[self.gdg.bcol];
-                        self.fb[index] = color;
+                        self.fb[index] = GDG.COLOR.all[self.gdg.bcol];
                     }
                     // In canvas area
                     else {
@@ -385,11 +384,10 @@ pub fn Type() type {
                             const col_addr: u16 = @intCast(canvas_x / 16);
                             const addr: u16 = row_addr + col_addr;
                             const char_byte_index = canvas_y % 8;
-                            // std.debug.print("🚨 mz700: canvas x/y: ({}/{}), char x/y ({}/{}), char_byte_index: {}, addr: {}\n", .{ canvas_x, canvas_y, canvas_x / 16, canvas_y / 8, char_byte_index, addr });
                             self.gdg.decode_vram_mz700(addr, char_byte_index, @intCast(index));
                         }
                         // Decode MZ-800 VRAM
-                        else if ((canvas_x % 8) == 0) {
+                        else if (!self.gdg.is_mz700 and (canvas_x % 8) == 0) {
                             // We decode in 8 pixel batches
                             const canvas_width: u16 = video.canvas.width;
                             const width: u16 = (if (self.gdg.isHires()) canvas_width else canvas_width / 2) / 8;
@@ -423,6 +421,7 @@ pub fn Type() type {
         }
 
         pub fn load(self: *Self, obj_file: MZF) void {
+            self.reset();
             const start = obj_file.header.start_address;
             const end = obj_file.header.file_length;
             for (0..end) |index| {

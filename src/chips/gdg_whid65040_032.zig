@@ -295,6 +295,11 @@ pub fn Type(comptime cfg: TypeConfig) type {
             }
         }
 
+        fn resetVRAM(self: *Self) void {
+            self.vram1 = std.mem.zeroes(@TypeOf((self.vram1)));
+            self.vram2 = std.mem.zeroes(@TypeOf((self.vram2)));
+        }
+
         /// Reset GDG instance
         pub fn reset(self: *Self) void {
             self.wf = 0;
@@ -309,8 +314,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
             self.bcol = 0;
             self.plt = std.mem.zeroes(@TypeOf((self.plt)));
             self.plt_sw = 0;
-            self.vram1 = std.mem.zeroes(@TypeOf((self.vram1)));
-            self.vram2 = std.mem.zeroes(@TypeOf((self.vram2)));
+            self.resetVRAM();
             self.resetRGBA8Buffer();
         }
 
@@ -638,9 +642,9 @@ pub fn Type(comptime cfg: TypeConfig) type {
         /// Decode one byte of VRAM into the RGBA8 buffer in MZ-700 mode.
         pub fn decode_vram_mz700(self: *Self, addr: u16, char_byte_index: usize, fb_index: u32) void {
             // Convert addr to address offsets in character VRAM and color VRAM
-            // Character range: 0x0000 - 0x03f7
+            // Character VRAM range: 0x0000 - 0x03f7
             const character_code_addr: u16 = if (addr >= 0x0800) (addr - 0x0800) else addr;
-            // Color range: 0x0800 - 0x0bf7
+            // Color VRAM range: 0x0800 - 0x0bf7
             const color_addr: u16 = if (addr >= 0x0800) addr else (addr + 0x0800);
 
             // Convert color code to foreground and background colors
@@ -668,25 +672,20 @@ pub fn Type(comptime cfg: TypeConfig) type {
             }
 
             // Character data lookup and copy to RGBA8 buffer
-            // for (0..1) |char_byte_index| {
             const char_byte = self.cgrom[character_addr + char_byte_index];
             // Pixel index in rgba8_buffer
             var index: u32 = fb_index;
-            const offset: u32 = @as(u32, @intCast(char_byte_index));
             for (0..8) |bit| {
                 // Get color for pixel
                 const foreground = ((char_byte >> @intCast(bit)) & 0x01) == 1;
                 const color = if (foreground) fg_color else bg_color;
 
-                // std.debug.print("🚨 mz700: addr: {}, index+offset: {}, index: {}, offset: {}\n", .{ addr, index + offset, index, offset });
-
                 // Write character data to RGBA8 buffer (in 320x200 resolution, 2 bytes per pixel)
-                self.rgba8_buffer[index + offset] = color;
+                self.rgba8_buffer[index] = color;
                 index += 1;
-                self.rgba8_buffer[index + offset] = color;
+                self.rgba8_buffer[index] = color;
                 index += 1;
             }
-            // }
         }
 
         /// Decode one byte of VRAM into the RGBA8 buffer in MZ-800 mode.
