@@ -14,7 +14,8 @@ const frequencies = mz800.frequencies;
 const mzf = system.mzf;
 const MZF = mzf.Type();
 
-const name = "MZ-800";
+const mz800_name = "MZ-800";
+const mz700_name = "MZ-700";
 
 var sys: MZ800 = undefined;
 var gpa = GeneralPurposeAllocator(.{}){};
@@ -44,6 +45,7 @@ export fn frame() void {
     host.time.emuStart();
     const num_ticks = sys.exec(frame_time);
     host.prof.pushMicroSeconds(.EMU, host.time.emuEnd());
+    const name = if (sys.gdg.is_mz700) mz700_name else mz800_name;
     host.gfx.draw(.{
         .display = sys.displayInfo(),
         .status = .{
@@ -106,7 +108,7 @@ pub fn main() void {
         .event_cb = input,
         .frame_cb = frame,
         .cleanup_cb = cleanup,
-        .window_title = name,
+        .window_title = mz800_name,
         .width = width,
         .height = height,
         .icon = .{ .sokol_default = true },
