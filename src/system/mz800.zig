@@ -353,14 +353,14 @@ pub fn Type() type {
 
         fn videoTick(self: *Self, bus: Bus) Bus {
             self.video.tick += 1;
-            if ((self.video.tick % video.screen.frame) == 0) {
+            if (self.video.tick == video.screen.frame) {
                 self.video.tick = 0;
             }
             self.video.h_tick += 1;
-            if ((self.video.h_tick % video.screen.horizontal.line) == 0) {
+            if (self.video.h_tick == video.screen.horizontal.line) {
                 self.video.h_tick = 0;
                 self.video.v_count += 1;
-                if ((self.video.v_count % video.screen.height) == 0) {
+                if (self.video.v_count == video.screen.height) {
                     self.video.v_count = 0;
                 }
             }
