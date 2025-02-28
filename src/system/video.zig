@@ -107,7 +107,7 @@
 // Video Enable: 928T (Border + Canvas)
 // Front Porch: 22T
 
-/// Video definitions
+/// Video dimensions
 pub const video = struct {
     /// Border area (single color)
     pub const border = struct {
@@ -118,25 +118,30 @@ pub const video = struct {
     };
 
     /// User drawable area dimensions
+    /// in pixels: 640 x 200
     pub const canvas = struct {
         pub const width: comptime_int = 640;
         pub const height: comptime_int = 200;
     };
 
     /// Visible display dimensions
+    /// in pixels: 928 x 288
     pub const display = struct {
         pub const width = border.left + canvas.width + border.right;
         pub const height = border.top + canvas.height + border.bottom;
     };
 
     /// Screen dimensions in GDG ticks (CLK0)
+    /// Screen in pixels: 1136 x 312
     pub const screen = struct {
         pub const horizontal = struct {
             pub const hsync: comptime_int = 80;
             pub const back_porch: comptime_int = 106;
             pub const video_enable = display.width;
             pub const front_porch: comptime_int = 22;
+
             pub const video_enable_start = hsync + back_porch;
+            pub const video_enable_end = video_enable_start + video_enable;
 
             pub const line = hsync + back_porch + video_enable + front_porch;
         };
@@ -146,7 +151,9 @@ pub const video = struct {
             pub const back_porch = horizontal.line * 19 + 2;
             pub const video_enable = horizontal.line * display.height;
             pub const front_porch = horizontal.line * 3;
+
             pub const video_enable_start = vsync + back_porch;
+            pub const video_enable_end = video_enable_start + video_enable;
         };
 
         pub const width = horizontal.line;

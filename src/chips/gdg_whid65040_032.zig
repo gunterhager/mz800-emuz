@@ -65,8 +65,10 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 pub const WF: u16 = 0x00cc;
                 /// Read format register (reading from VRAM)
                 pub const RF: u16 = 0x00cd;
+
                 /// Display mode register
                 pub const DMD: u16 = 0x00ce;
+
                 /// Scroll offset 1 register
                 pub const SOF1: u16 = 0x01cf;
                 /// Scroll offset 2 register
@@ -77,10 +79,13 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 pub const SSA: u16 = 0x04cf;
                 /// Scroll end address register
                 pub const SEA: u16 = 0x05cf;
+
                 /// Border color register
                 pub const BCOL: u16 = 0x06cf;
+
                 /// Clock switch register
                 pub const CKSW: u16 = 0x07cf;
+
                 /// Palette register
                 pub const PAL: u16 = 0x00f0;
             };
@@ -131,7 +136,16 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         /// Status register
         pub const STATUS_MODE = struct {
+            pub const TEMPO: u8 = 1 << 0;
             pub const MZ800: u8 = 1 << 1;
+            // Low active: 0 .. VSYNC active, 1 .. inactive
+            pub const VSYNC: u8 = 1 << 4;
+            // Low active: 0 .. HSYNC active, 1 .. inactive
+            pub const HSYNC: u8 = 1 << 5;
+            // Low active: 0 .. VBLANK active, 1 .. inactive
+            pub const VBLANK: u8 = 1 << 6;
+            // Low active: 0 .. HBLANK active, 1 .. inactive
+            pub const HBLANK: u8 = 1 << 7;
         };
 
         /// Color intensity helper function
@@ -209,26 +223,31 @@ pub fn Type(comptime cfg: TypeConfig) type {
         wf: u8 = 0,
         /// Read format register (reading from VRAM)
         rf: u8 = 0,
+
         /// Display mode register
         dmd: u8 = 0,
+
         /// Display status register
         /// BLNK, SYNC, SW1 Mode switch, TEMPO
         status: u8 = 0,
+
         /// Scroll Registers need to be set in increments of 0x5.
-        /// Scroll offsets have a range from 0x0 to 0x3e8, stored
-        /// as 10 bit number in two registers SOF1 and SOF2.
-        /// Scroll offset 1 register
-        sof1: u8 = 0,
-        /// Scroll offset 2 register
-        sof2: u8 = 0,
+        ///
+        /// Scroll offsets have a range from 0x0 to 0x3e8, written
+        /// as 10 bit number into two registers SOF1 and SOF2.
+        ///
+        /// Scroll offset register (0x0 to 0x3e8)
+        sof: u16 = 0,
         /// Scroll width register (0x0 to 0x7d)
         sw: u8 = 0,
         /// Scroll start address register (0x0 to 0x78)
         ssa: u8 = 0,
         /// Scroll end address register (0x5 to 0x7d)
         sea: u8 = 0,
+
         /// Border color register
         bcol: u8 = 0,
+
         /// Palette registers
         plt: [PALETTE_SIZE]u4 = [_]u4{0} ** PALETTE_SIZE,
         /// Palette registers in RGBA8 format
@@ -300,17 +319,20 @@ pub fn Type(comptime cfg: TypeConfig) type {
             self.vram2 = std.mem.zeroes(@TypeOf((self.vram2)));
         }
 
+        fn resetScroll(self: *Self) void {
+            self.sof = 0;
+            self.sw = 0x7d;
+            self.ssa = 0;
+            self.sea = 0x7d;
+        }
+
         /// Reset GDG instance
         pub fn reset(self: *Self) void {
             self.wf = 0;
             self.rf = 0;
             self.status = 0; // needs to be set before setting DMD
             self.set_dmd(0);
-            self.sof1 = 0;
-            self.sof2 = 0;
-            self.sw = 0;
-            self.ssa = 0;
-            self.sea = 0;
+            self.resetScroll();
             self.bcol = 0;
             self.plt = std.mem.zeroes(@TypeOf((self.plt)));
             self.plt_sw = 0;
@@ -370,14 +392,14 @@ pub fn Type(comptime cfg: TypeConfig) type {
                         // Scroll registers and border color register share the same lower address
                         (IO_ADDR.WR.SOF1 & 0xff) => {
                             switch (addr) {
-                                // Scroll offset register 1
+                                // Scroll offset register 1 (lower byte)
                                 IO_ADDR.WR.SOF1 => {
-                                    self.sof1 = value;
+                                    self.sof = (self.sof & 0xff00) | value;
                                 },
-                                // Scroll offset register 2
+                                // Scroll offset register 2 (upper byte)
                                 IO_ADDR.WR.SOF2 => {
-                                    // only the two lowest bits can be set
-                                    self.sof2 = value & 0x03;
+                                    // only the two lowest bits of value are used
+                                    self.sof = (self.sof & 0xff) | (@as(u16, value & 0b11) << 8);
                                 },
                                 // Scroll width register
                                 IO_ADDR.WR.SW => {
@@ -691,14 +713,17 @@ pub fn Type(comptime cfg: TypeConfig) type {
         /// Decode one byte of VRAM into the RGBA8 buffer in MZ-800 mode.
         /// VRAM addr starts at 0x0.
         /// fb_index is the index in the framebuffer where the 8 pixels should be set.
-        pub fn decode_vram_mz800(self: *Self, addr: u16, fb_index: u32) void {
+        pub fn decode_vram_mz800(self: *Self, in_addr: u16, fb_index: u32) void {
             const hires = self.isHires();
             const hicolor = self.isHicolor();
 
             // VRAM address check
-            if (addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {
+            if (in_addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {
                 return;
             }
+
+            // Scroll
+            const addr = self.scroll(in_addr);
 
             // Get VRAM bytes for each plane
             var planeI_data: u8 = 0;
@@ -766,6 +791,46 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 self.rgba8_buffer[index] = color;
                 index += 1;
             }
+        }
+
+        /// Scroll mechanism as documented in the technical reference manual:
+        /// Scroll and control circuit hardware block diagram
+        /// Returns scrolled display address
+        fn scroll(self: *Self, display_address: u16) u16 {
+            const in_ssa: u7 = @truncate(self.ssa);
+            const in_sea: u7 = @truncate(self.sea);
+            const in_sw: u7 = @truncate(self.sw);
+            const sof: u10 = @truncate(self.sof);
+
+            const ssa: u10 = in_ssa << 3;
+            const sea: u10 = in_sea << 3;
+            const sw: u10 = in_sw << 3;
+
+            // display address with blanked out bits
+            const da3: u16 = display_address & 0b000_0000000_000_111;
+            const da7: u10 = @truncate((display_address & 0b000_1111111_000_000) >> 3);
+            const da10: u10 = @truncate((display_address & 0b000_1111111_111_000) >> 3);
+
+            const sub_sea_sof = sea -% sof;
+            const sub_sof_sw = sof -% sw;
+
+            const comp_a = if (ssa > da7) ssa else da7;
+            const comp_b = if (sub_sea_sof > da10) sub_sea_sof else da10;
+            const comp_c = if (sea > da7) sea else da7;
+
+            const not_a_and_b = ~comp_a & comp_b;
+            const not_a_and_not_b_and_c = ~comp_a & ~comp_b & comp_c;
+            const a_or_not_a_and_not_b_and_not_c = comp_a | ~comp_a & ~comp_b & ~comp_c;
+
+            const and_1 = sof & not_a_and_b;
+            const and_2 = sub_sof_sw & not_a_and_not_b_and_c;
+            const and_3 = a_or_not_a_and_not_b_and_not_c; // pass thru
+
+            const or_all = and_1 | and_2 | and_3;
+
+            const add_da = da10 +% or_all;
+
+            return (@as(u16, add_da) << 3) | da3;
         }
     };
 }

@@ -39,6 +39,7 @@ pub fn Type() type {
                 return error.WrongFileType;
             }
             if (len != self.header.file_length) {
+                std.debug.print("🚨 File length mismatch: header file length: {}, found file length: {}\n", .{ self.header.file_length, len });
                 return error.WrongFileLength;
             }
         }

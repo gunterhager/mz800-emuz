@@ -260,8 +260,8 @@ pub fn Type() type {
                 .junk_page = std.mem.zeroes(@TypeOf(self.junk_page)),
                 .unmapped_page = [_]u8{0xFF} ** Memory.PAGE_SIZE,
             };
-            // Hard reset memory mapping
-            self.resetMemoryMap(false);
+            // Hard reset
+            self.reset(false);
         }
 
         fn initRoms(opts: Options) ROM {
@@ -272,9 +272,9 @@ pub fn Type() type {
             return rom;
         }
 
-        pub fn reset(self: *Self) void {
+        pub fn reset(self: *Self, is_soft_reset: bool) void {
             // TODO: check soft/hard reset
-            const is_soft_reset = false;
+            self.video = .{};
             self.resetMemoryMap(is_soft_reset);
             self.pio.reset();
             self.ppi.reset();
@@ -282,6 +282,7 @@ pub fn Type() type {
             self.cpu.reset();
         }
 
+        // 17.734475 MHz = 56.387347243152 ns(p)
         pub fn exec(self: *Self, micro_seconds: u32) u32 {
             var bus = self.bus;
             const CLK0: u64 = @intFromFloat(frequencies.CLK0);
@@ -369,6 +370,44 @@ pub fn Type() type {
                 if (videoTickToFrameY(self.video.tick)) |y| {
                     const index = framebufferIndex(x, y);
 
+                    // Video status updates
+                    // Start of real HSYNC (used for CTC CLK1 - this isn't used for the status flags)
+                    if (x == 950) {
+                        // TODO: use real HSYNC
+                    }
+                    // Start of HSYNC
+                    if (x == 926) {
+                        self.gdg.status &= ~GDG.STATUS_MODE.HSYNC;
+                    }
+                    // End of HSYNC
+                    if (x == 1133) {
+                        self.gdg.status |= GDG.STATUS_MODE.HSYNC;
+                    }
+                    // Start of HBLANK
+                    if (x == video.border.left + video.canvas.width) {
+                        self.gdg.status &= ~GDG.STATUS_MODE.HBLANK;
+                    }
+                    // End of HBLANK
+                    if (x == video.border.left) {
+                        self.gdg.status |= GDG.STATUS_MODE.HBLANK;
+                    }
+                    // Start of VBLANK
+                    if (x == 790 and y == video.border.top + video.canvas.height) {
+                        self.gdg.status &= ~GDG.STATUS_MODE.VBLANK;
+                    }
+                    // End of VBLANK
+                    if (x == 790 and y == video.border.top) {
+                        self.gdg.status |= GDG.STATUS_MODE.VBLANK;
+                    }
+                    // Start of VSYNC
+                    if (x == 792 and y == video.border.top + video.canvas.height + video.border.bottom) {
+                        self.gdg.status &= ~GDG.STATUS_MODE.VSYNC;
+                    }
+                    // End of VSYNC
+                    if (x == 792 and y == 0) {
+                        self.gdg.status |= GDG.STATUS_MODE.VSYNC;
+                    }
+
                     // In border area
                     if ((x < video.border.left) or (x >= video.border.left + video.canvas.width) or (y < video.border.top) or (y >= video.border.top + video.canvas.height)) {
                         self.fb[index] = GDG.COLOR.all[self.gdg.bcol];
@@ -427,7 +466,7 @@ pub fn Type() type {
         }
 
         pub fn load(self: *Self, obj_file: MZF) void {
-            self.reset();
+            self.reset(false);
             const start = obj_file.header.start_address;
             const end = obj_file.header.file_length;
             for (0..end) |index| {
