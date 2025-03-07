@@ -9,6 +9,7 @@ const gdg_whid65040_032 = @import("chips").gdg_whid65040_032;
 const z80 = chipz.chips.z80;
 const z80pio = chipz.chips.z80pio;
 const intel8255 = chipz.chips.intel8255;
+const intel8253 = @import("chips").intel8253;
 const common = chipz.common;
 const memory = common.memory;
 const clock = common.clock;
@@ -59,6 +60,7 @@ const PIO_PINS = z80pio.Pins{
     .IEIO = 50,
 };
 
+/// Intel 8255 PPI pus definitions
 const PPI_PINS = intel8255.Pins{
     .RD = CPU_PINS.RD,
     .WR = CPU_PINS.WR,
@@ -68,6 +70,24 @@ const PPI_PINS = intel8255.Pins{
     .PA = .{ 64, 65, 66, 67, 68, 69, 70, 71 },
     .PB = .{ 72, 73, 74, 75, 76, 77, 78, 79 },
     .PC = .{ 80, 81, 82, 83, 84, 85, 86, 87 },
+};
+
+/// Intel 8253 CTC pus definitions
+const CTC_PINS = intel8253.Pins{
+    .RD = CPU_PINS.RD,
+    .WR = CPU_PINS.WR,
+    .CS = 37,
+    .DBUS = CPU_PINS.DBUS,
+    .ABUS = .{ CPU_PINS.ABUS[0], CPU_PINS.ABUS[1] },
+    .CLK0 = 64,
+    .GATE0 = 65,
+    .OUT0 = 66,
+    .CLK1 = 67,
+    .GATE1 = 68,
+    .OUT1 = 69,
+    .CLK2 = 70,
+    .GATE2 = 71,
+    .OUT2 = 72,
 };
 
 /// GDG bus definitions
@@ -86,6 +106,7 @@ const Memory = memory.Type(.{ .page_size = 0x0400 });
 const Z80 = z80.Type(.{ .pins = CPU_PINS, .bus = Bus });
 const Z80PIO = z80pio.Type(.{ .pins = PIO_PINS, .bus = Bus });
 const PPI = intel8255.Type(.{ .pins = PPI_PINS, .bus = Bus });
+const CTC = intel8253.Type(.{ .pins = CTC_PINS, .bus = Bus });
 const GDG = gdg_whid65040_032.Type(.{ .pins = GDG_PINS, .bus = Bus });
 const KeyBuf = keybuf.Type(.{ .num_slots = 4 });
 const Audio = audio.Type(.{ .num_voices = 2 });
@@ -201,7 +222,7 @@ pub fn Type() type {
         ppi: PPI,
 
         // CTC i8253, programmable counter/timer
-        // TODO: implement CTC
+        ctc: CTC,
 
         // GDG WHID 65040-032, CRT controller
         gdg: GDG,
@@ -242,6 +263,7 @@ pub fn Type() type {
                 .cpu = Z80.init(),
                 .pio = Z80PIO.init(),
                 .ppi = PPI.init(),
+                .ctc = CTC.init(),
                 .gdg = GDG.init(.{
                     .cgrom = &self.rom.cgrom,
                     .rgba8_buffer = &self.fb,
@@ -278,6 +300,7 @@ pub fn Type() type {
             self.resetMemoryMap(is_soft_reset);
             self.pio.reset();
             self.ppi.reset();
+            self.ctc.reset();
             self.gdg.reset();
             self.cpu.reset();
         }
@@ -554,7 +577,7 @@ pub fn Type() type {
                 },
                 // CTC i8253, programmable counter/timer
                 0xd4...0xd7 => {
-                    std.debug.panic("i8253 not implemented", .{});
+                    bus = self.ctc.tick(bus);
                 },
                 // FDC, floppy disc controller
                 0xd8...0xdf => {
@@ -572,7 +595,7 @@ pub fn Type() type {
                     }
                     // Joystick (read only)
                     else if ((bus & RD) != 0) {
-                        std.debug.panic("Joystick not implemented", .{});
+                        bus = self.ppi.tick(bus);
                     }
                 },
                 // PSG SN 76489 AN, sound generator
