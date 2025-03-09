@@ -22,6 +22,8 @@ pub const Pins = struct {
     RD: comptime_int,
     /// Write
     WR: comptime_int,
+    /// Chip select
+    CS: comptime_int,
 };
 
 /// Default pin configuration (mainly useful for debugging)
@@ -32,6 +34,7 @@ pub const DefaultPins = Pins{
     .IORQ = 26,
     .RD = 27,
     .WR = 28,
+    .CS = 29,
 };
 
 /// Comptime type configuration for GDG

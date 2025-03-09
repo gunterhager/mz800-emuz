@@ -18,7 +18,10 @@
 //! CLK0..2: count on falling edge
 //! GATE0..2: enable/disable counting, depending on mode.
 //!
+//! NOTE: Mode 4 and Mode 5 are not implemented!
+//!
 
+const std = @import("std");
 const chipz = @import("chipz");
 const bitutils = chipz.common.bitutils;
 const mask = bitutils.mask;
@@ -148,7 +151,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 pub const COUNTER0: u8 = 0b00 << 6;
                 pub const COUNTER1: u8 = 0b01 << 6;
                 pub const COUNTER2: u8 = 0b10 << 6;
-                pub const READ_BACK: u8 = 0b11 << 6;
+                pub const ILLEGAL: u8 = 0b11 << 6;
             };
 
             // Reset state
@@ -162,9 +165,346 @@ pub fn Type(comptime cfg: TypeConfig) type {
             pub const CTRL: u2 = 3;
         };
 
-        counter0: u16 = 0,
-        counter1: u16 = 0,
-        counter2: u16 = 0,
+        pub const MODE = enum(u8) {
+            MODE0 = 0, // Interrupt on Terminal Count
+            MODE1, // Programmable One-Shot
+            MODE2, // Rate Generator
+            MODE3, // Square Wave Generator
+            MODE4, // Software Triggered Strobe
+            MODE5, // Hardware Triggered Strobe
+        };
+
+        pub const READ_LOAD_FORMAT = enum(u8) {
+            LATCH,
+            LSB, // Read/load LSB
+            MSB, // Read/load MSB
+            LSB_MSB, // Read/load LSB followed by MSB
+        };
+
+        pub const CounterID = enum(comptime_int) {
+            C0 = 0,
+            C1,
+            C2,
+        };
+
+        pub const State = enum {
+            init, // CW has been entered
+            init_done, // CW has been entered followed by falling CLK
+            load, // LOAD has started
+            preset_error, // PRESET = 0x0001 in MODE2 - can't be calculated, setting VALUE again calls LOAD_DONE
+            load_done, // LOAD is done, followed by PRESET regardless of GATE state
+            wait_gate_high, // Waiting for GATE = 1
+            preset, // preparation before starting reading, it can be recalled when GATE = 0, we put PRESET in VALUE
+            preset32, // preparation before starting reading, it can be recalled when GATE = 0, we put the constant 32 in VALUE
+            countdown, // subtract with target
+            mode1_trigger_error, // MODE1: the trigger GATE = 0|1 arrived, but it was not LOAD_DONE yet, after the next LOAD completion, we call PRESET32
+            blind_count, // subtract without target
+        };
+
+        pub const Counter = struct {
+            out_pin: u7,
+            out: u1 = 0,
+            gate_pin: u7,
+            gate: u1 = 0,
+            mode: MODE = .MODE0,
+            bcd: bool = false,
+            read_load_format: READ_LOAD_FORMAT = .LSB_MSB,
+            state: State = .init_done,
+            load_done: bool = false,
+            read_load_msb: bool = false,
+            latch_operation: bool = false, // if true we need to set read_latch
+            read_latch: u16 = 0,
+            preset_value: u17 = 0xffff,
+            preset_latch: u16 = 0,
+            value: u17 = 0,
+            mode3_destination_value: u17 = 0,
+            mode3_half_value: u17 = 0,
+
+            pub fn setOut(self: *Counter, value: u1, bus: Bus) Bus {
+                self.out = value;
+                return bus & ~(@as(Bus, 1) << self.out_pin) | @as(Bus, value) << self.out_pin;
+            }
+
+            pub fn tick(self: *Counter, in_bus: Bus) Bus {
+                const bus = in_bus;
+                switch (self.mode) {
+                    .MODE0 => {
+                        switch (self.state) {
+                            .countdown, .mode1_trigger_error, .blind_count => {
+                                self.value -= 1;
+                                if (self.value == 0) {
+                                    bus = self.setOut(1, bus);
+                                    self.state = .blind_count;
+                                    self.value = 0xffff;
+                                }
+                                return bus;
+                            },
+                            .load_done => {
+                                self.writeValue(self.preset_value);
+                                if (self.gate == 1) {
+                                    self.state = .countdown;
+                                } else {
+                                    self.state = .wait_gate_high;
+                                }
+                                return bus;
+                            },
+                        }
+                    },
+                    .MODE1 => {
+                        switch (self.state) {
+                            .blind_count => {
+                                self.value -= 1;
+                                if (self.value == 0) {
+                                    self.value = 0xffff;
+                                }
+                                return bus;
+                            },
+                            .countdown => {
+                                self.value -= 1;
+                                if (self.value == 0) {
+                                    bus = self.setOut(1, bus);
+                                    if (self.gate == 1) {
+                                        self.state = .blind_count;
+                                    } else {
+                                        self.state = .wait_gate_high;
+                                    }
+                                }
+                                return bus;
+                            },
+                            .load_done => {
+                                if (self.gate == 1) {
+                                    self.state = .blind_count;
+                                } else {
+                                    self.state = .wait_gate_high;
+                                }
+                                return bus;
+                            },
+                            .preset => {
+                                self.writeValue(self.preset_value);
+                                bus = self.setOut(0, bus);
+                                self.state = .countdown;
+                                return bus;
+                            },
+                            .preset32 => {
+                                self.value = 32;
+                                self.state = .countdown;
+                                return bus;
+                            },
+                        }
+                    },
+                    .MODE2 => {
+                        switch (self.state) {
+                            .countdown => {
+                                self.value -= 1;
+                                if (self.value == 0x0001) {
+                                    bus = self.setOut(0, bus);
+                                    self.state = .preset;
+                                }
+                                return bus;
+                            },
+                            .preset, .load_done => {
+                                bus = self.setOut(1, bus);
+                                self.writeValue(self.preset_value);
+                                if (self.value == 0x0001) {
+                                    self.state = .preset_error;
+                                } else {
+                                    if (self.gate == 1) {
+                                        self.state = .countdown;
+                                    } else {
+                                        self.state = .wait_gate_high;
+                                    }
+                                }
+                                return bus;
+                            },
+                        }
+                    },
+                    .MODE3 => {
+                        switch (self.state) {
+                            .countdown => {
+                                self.value -= 1;
+                                if (self.value == self.mode3_destination_value) {
+                                    if (self.out == 1) {
+                                        bus = self.setOut(0, bus);
+                                        self.value = self.mode3_half_value;
+                                        self.mode3_destination_value = 0;
+                                    } else {
+                                        bus = self.setOut(1, bus);
+                                        self.writeValue(self.preset_value);
+                                        self.mode3_destination_value = self.mode3_half_value;
+                                        if (self.gate == 1) {
+                                            self.state = .countdown;
+                                        } else {
+                                            self.state = .wait_gate_high;
+                                        }
+                                    }
+                                }
+                                return bus;
+                            },
+                            .preset, .load_done => {
+                                bus = self.setOut(1, bus);
+                                self.writeValue(self.preset_value);
+                                self.mode3_destination_value = self.mode3_half_value;
+                                if (self.gate == 1) {
+                                    self.state = .countdown;
+                                } else {
+                                    self.state = .wait_gate_high;
+                                }
+                                return bus;
+                            },
+                        }
+                    },
+                    .MODE4, .MODE5 => {
+                        std.debug.panic("CTC MODE4 and MODE5 not implemented", .{});
+                        return bus;
+                    },
+                    else => {},
+                }
+
+                if (self.state == .init) {
+                    if (self.load_done == true) {
+                        self.state = .load_done;
+                        self.load_done = false;
+                    } else {
+                        self.state = .init_done;
+                    }
+                }
+                return bus;
+            }
+
+            /// Sets value interpreting given new_value as binary or BCD depending on the bcd flag
+            fn writeValue(self: *Counter, new_value: u16) void {
+                self.value = if (self.bcd) intFromBCD(new_value) else new_value;
+            }
+
+            /// Returns value in binary or BCD depending on the bcd flag.
+            /// Uses value or read_latch depending on latch_operation flag.
+            fn readValue(self: *Counter) u16 {
+                const value = if (self.latch_operation) self.read_latch else self.value;
+                return if (self.bcd) bcdFromInt(@truncate(value)) else @truncate(value);
+            }
+
+            pub fn writeCTRL(self: *Counter, bus: Bus) Bus {
+                const data = getData(bus);
+                const read_load_format: READ_LOAD_FORMAT = @enumFromInt((data >> 4) & 0b11);
+                self.read_load_msb = false;
+                if (read_load_format == .LATCH) {
+                    self.latch_operation = true;
+                    self.read_latch = @truncate(self.value);
+                    return bus;
+                }
+
+                self.latch_operation = false;
+                self.read_load_format = read_load_format;
+                const raw_mode = (data >> 1) & 0b111;
+                self.mode = @enumFromInt(if (raw_mode > 5) (raw_mode & 0b11) else raw_mode);
+                self.bcd = (data & 0b1) == 1;
+                self.state = .init;
+                self.load_done = false;
+                const output: u1 = if (self.mode == .MODE0) 0 else 1;
+                return self.setOut(output, bus);
+            }
+
+            pub fn writeData(self: *Counter, in_bus: Bus) Bus {
+                var bus = in_bus;
+                const data = getData(in_bus);
+                self.latch_operation = false;
+                if ((self.mode == .MODE0) and (self.state != .init) and (self.state != .init_done)) {
+                    self.state = .load;
+                    bus = self.setOut(0, bus);
+                }
+
+                switch (self.read_load_format) {
+                    .LSB => {
+                        self.preset_latch = data;
+                    },
+                    .MSB => {
+                        self.preset_latch = @as(u16, data) << 8;
+                    },
+                    .LSB_MSB => {
+                        if (self.read_load_msb == false) {
+                            self.preset_latch = data;
+                            self.read_load_msb = true;
+                        } else {
+                            self.preset_latch |= @as(u16, data) << 8;
+                            self.read_load_msb = false;
+                        }
+                    },
+                    else => {},
+                }
+                self.preset_value = if (self.preset_latch == 0) 0x10000 else self.preset_latch;
+                if (self.mode == .MODE3) {
+                    if (self.preset_value == 1) {
+                        self.preset_value = 0x10001;
+                    }
+                    self.mode3_half_value = self.preset_value;
+                    if ((self.mode3_half_value & 1) == 1) {
+                        self.mode3_half_value += 1;
+                    }
+                    self.mode3_half_value >>= 1;
+                }
+
+                // LOAD completed
+                switch (self.state) {
+                    .init => {
+                        self.load_done = true;
+                    },
+                    .init_done, .load, .preset_error => {
+                        self.state = .load_done;
+                    },
+                    .mode1_trigger_error => {
+                        self.state = .preset32;
+                    },
+                    else => {},
+                }
+                return bus;
+            }
+
+            pub fn readData(self: *Counter, in_bus: Bus) Bus {
+                var bus = in_bus;
+                const value = self.readValue();
+                var result: u8 = 0;
+                switch (self.read_load_format) {
+                    .LSB => {
+                        self.latch_operation = false;
+                        result = @truncate(value);
+                    },
+                    .MSB => {
+                        self.latch_operation = false;
+                        result = @truncate(value >> 8);
+                    },
+                    .LSB_MSB => {
+                        if (self.read_load_msb == false) {
+                            self.read_load_msb = true;
+                            result = @truncate(value);
+                        } else {
+                            self.read_load_msb = false;
+                            self.latch_operation = false;
+                            result = @truncate(value >> 8);
+                        }
+                    },
+                    else => {
+                        return bus;
+                    },
+                }
+                bus = setData(bus, result);
+                return bus;
+            }
+        };
+
+        counter: [3]Counter = .{
+            .{
+                .out_pin = cfg.pins.OUT0,
+                .gate_pin = cfg.pins.GATE0,
+            },
+            .{
+                .out_pin = cfg.pins.OUT1,
+                .gate_pin = cfg.pins.GATE1,
+            },
+            .{
+                .out_pin = cfg.pins.OUT2,
+                .gate_pin = cfg.pins.GATE2,
+            },
+        },
         control: u8 = 0,
         reset_active: bool = false,
 
@@ -207,41 +547,62 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 if ((bus & RD) != 0) {
                     bus = self.read(bus);
                 } else if ((bus & WR) != 0) {
-                    self.write(bus);
+                    bus = self.write(bus);
                 }
             }
-            bus = self.write_ports(bus);
             return bus;
         }
 
         /// Write a value to the CTC
-        pub fn write(self: *Self, bus: Bus) void {
-            // const data = getData(bus);
-            _ = self;
-            switch (getABUS(bus)) {
-                ABUS_MODE.COUNTER0 => {
-                    // Write to counter 0
+        pub fn write(self: *Self, in_bus: Bus) Bus {
+            const data = getData(in_bus);
+            const addr = getABUS(in_bus);
+            switch (addr) {
+                ABUS_MODE.CTRL => {
+                    const sc = data & 0b11000000;
+                    if (sc == CTRL.SC.ILLEGAL) return in_bus;
+                    const cs = sc >> 6;
+                    return self.counter[cs].writeCTRL(in_bus);
                 },
-                else => {},
+                else => {
+                    const cs = addr;
+                    return self.counter[cs].writeData(in_bus);
+                },
             }
         }
 
         // Read a value from the CTC
-        fn read(self: *Self, bus: Bus) Bus {
-            const data: u8 = 0xff;
-            _ = self;
-            switch (getABUS(bus)) {
+        pub fn read(self: *Self, in_bus: Bus) Bus {
+            const addr = getABUS(in_bus);
+            switch (addr) {
+                ABUS_MODE.COUNTER0, ABUS_MODE.COUNTER1, ABUS_MODE.COUNTER2 => {
+                    return self.counter[addr].readData(in_bus);
+                },
                 else => {},
             }
-            return setData(bus, data);
-        }
-
-        // Write ports to bus
-        fn write_ports(self: *Self, in_bus: Bus) Bus {
-            self.reset_active = false;
-            const bus = in_bus;
-
-            return bus;
+            return in_bus;
         }
     };
+}
+
+pub fn intFromBCD(bcd: u16) u16 {
+    var result: u16 = 0;
+    var exp: u16 = 1;
+    for (0..4) |index| {
+        const digit = (bcd >> @intCast(index * 4)) & 0xf;
+        result += digit * exp;
+        exp *= 10;
+    }
+    return result;
+}
+
+pub fn bcdFromInt(in_int: u16) u16 {
+    var int = in_int;
+    var result: u16 = 0;
+    for (0..4) |index| {
+        const digit = int % 10;
+        int = int / 10;
+        result += digit << @intCast(index * 4);
+    }
+    return result;
 }

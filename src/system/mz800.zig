@@ -23,7 +23,7 @@ const DisplayInfo = common.glue.DisplayInfo;
 const mzf = @import("mzf.zig");
 const MZF = mzf.Type();
 
-/// Z80 bus definitions
+/// Z80 bus definitions (0..35)
 const CPU_PINS = z80.Pins{
     .DBUS = .{ 0, 1, 2, 3, 4, 5, 6, 7 },
     .ABUS = .{ 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 },
@@ -40,6 +40,15 @@ const CPU_PINS = z80.Pins{
     .RETI = 35,
 };
 
+/// Chip select pin numbers
+const CS_PINS = struct {
+    const PIO: comptime_int = 36;
+    const PPI: comptime_int = 37;
+    const CTC: comptime_int = 38;
+    const GDG: comptime_int = 39;
+    const PSG: comptime_int = 40;
+};
+
 /// Z80 PIO bus definitions
 const PIO_PINS = z80pio.Pins{
     .DBUS = CPU_PINS.DBUS,
@@ -47,13 +56,13 @@ const PIO_PINS = z80pio.Pins{
     .IORQ = CPU_PINS.IORQ,
     .RD = CPU_PINS.RD,
     .INT = CPU_PINS.INT,
-    .CE = 36,
+    .CE = CS_PINS.PIO,
     .BASEL = CPU_PINS.ABUS[0], // BASEL pin is directly connected to A0
     .CDSEL = CPU_PINS.ABUS[1], // CDSEL pin is directly connected to A1
-    .ARDY = 37,
-    .BRDY = 38,
-    .ASTB = 39,
-    .BSTB = 40,
+    .ARDY = 41,
+    .BRDY = 42,
+    .ASTB = 43,
+    .BSTB = 44,
     .PA = .{ 64, 65, 66, 67, 68, 69, 70, 71 },
     .PB = .{ 72, 73, 74, 75, 76, 77, 78, 79 },
     .RETI = CPU_PINS.RETI,
@@ -64,30 +73,30 @@ const PIO_PINS = z80pio.Pins{
 const PPI_PINS = intel8255.Pins{
     .RD = CPU_PINS.RD,
     .WR = CPU_PINS.WR,
-    .CS = 37,
+    .CS = CS_PINS.PPI,
     .DBUS = CPU_PINS.DBUS,
     .ABUS = .{ CPU_PINS.ABUS[0], CPU_PINS.ABUS[1] },
-    .PA = .{ 64, 65, 66, 67, 68, 69, 70, 71 },
-    .PB = .{ 72, 73, 74, 75, 76, 77, 78, 79 },
-    .PC = .{ 80, 81, 82, 83, 84, 85, 86, 87 },
+    .PA = .{ 80, 81, 82, 83, 84, 85, 86, 87 },
+    .PB = .{ 88, 89, 90, 91, 92, 93, 94, 95 },
+    .PC = .{ 96, 97, 98, 99, 100, 101, 102, 103 },
 };
 
 /// Intel 8253 CTC pus definitions
 const CTC_PINS = intel8253.Pins{
     .RD = CPU_PINS.RD,
     .WR = CPU_PINS.WR,
-    .CS = 37,
+    .CS = CS_PINS.CTC,
     .DBUS = CPU_PINS.DBUS,
     .ABUS = .{ CPU_PINS.ABUS[0], CPU_PINS.ABUS[1] },
-    .CLK0 = 64,
-    .GATE0 = 65,
-    .OUT0 = 66,
-    .CLK1 = 67,
-    .GATE1 = 68,
-    .OUT1 = 69,
-    .CLK2 = 70,
-    .GATE2 = 71,
-    .OUT2 = 72,
+    .CLK0 = 104,
+    .GATE0 = 105,
+    .OUT0 = 106,
+    .CLK1 = 107,
+    .GATE1 = 108,
+    .OUT1 = 109,
+    .CLK2 = 110,
+    .GATE2 = 111,
+    .OUT2 = 112,
 };
 
 /// GDG bus definitions
@@ -98,6 +107,7 @@ const GDG_PINS = gdg_whid65040_032.Pins{
     .IORQ = CPU_PINS.IORQ,
     .RD = CPU_PINS.RD,
     .WR = CPU_PINS.WR,
+    .CS = CS_PINS.GDG,
 };
 
 pub const Bus = u128;
@@ -311,9 +321,12 @@ pub fn Type() type {
             const CLK0: u64 = @intFromFloat(frequencies.CLK0);
             const num_ticks = clock.microSecondsToTicks(CLK0, micro_seconds);
             for (0..num_ticks) |ticks| {
+                // CPU tick
                 if ((ticks % clock_dividers.CPU_CLK) == 0) {
                     bus = self.tick(bus);
                 }
+                // CTC CLK0 tick
+                if ((ticks % clock_dividers.CKMS) == 0) {}
                 bus = self.videoTick(bus);
             }
             self.bus = bus;
