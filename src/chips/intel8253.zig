@@ -202,6 +202,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
         };
 
         pub const Counter = struct {
+            clk: u1 = 0, // we tick the counter on falling edge of CLK
             out_pin: u7,
             out: u1 = 0,
             gate_pin: u7,
@@ -225,8 +226,18 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 return bus & ~(@as(Bus, 1) << self.out_pin) | @as(Bus, value) << self.out_pin;
             }
 
+            pub fn setCLK(self: *Counter, value: u1, bus: Bus) Bus {
+                if ((self.clk != value) and (value == 0)) {
+                    self.clk = value;
+                    return self.tick(bus);
+                } else {
+                    self.clk = value;
+                    return bus;
+                }
+            }
+
             pub fn tick(self: *Counter, in_bus: Bus) Bus {
-                const bus = in_bus;
+                var bus = in_bus;
                 switch (self.mode) {
                     .MODE0 => {
                         switch (self.state) {
@@ -240,7 +251,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                                 return bus;
                             },
                             .load_done => {
-                                self.writeValue(self.preset_value);
+                                self.writeValue(@truncate(self.preset_value));
                                 if (self.gate == 1) {
                                     self.state = .countdown;
                                 } else {
@@ -248,6 +259,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                                 }
                                 return bus;
                             },
+                            else => {},
                         }
                     },
                     .MODE1 => {
@@ -280,7 +292,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                                 return bus;
                             },
                             .preset => {
-                                self.writeValue(self.preset_value);
+                                self.writeValue(@truncate(self.preset_value));
                                 bus = self.setOut(0, bus);
                                 self.state = .countdown;
                                 return bus;
@@ -290,6 +302,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                                 self.state = .countdown;
                                 return bus;
                             },
+                            else => {},
                         }
                     },
                     .MODE2 => {
@@ -304,7 +317,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                             },
                             .preset, .load_done => {
                                 bus = self.setOut(1, bus);
-                                self.writeValue(self.preset_value);
+                                self.writeValue(@truncate(self.preset_value));
                                 if (self.value == 0x0001) {
                                     self.state = .preset_error;
                                 } else {
@@ -316,6 +329,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                                 }
                                 return bus;
                             },
+                            else => {},
                         }
                     },
                     .MODE3 => {
@@ -329,7 +343,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                                         self.mode3_destination_value = 0;
                                     } else {
                                         bus = self.setOut(1, bus);
-                                        self.writeValue(self.preset_value);
+                                        self.writeValue(@truncate(self.preset_value));
                                         self.mode3_destination_value = self.mode3_half_value;
                                         if (self.gate == 1) {
                                             self.state = .countdown;
@@ -342,7 +356,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                             },
                             .preset, .load_done => {
                                 bus = self.setOut(1, bus);
-                                self.writeValue(self.preset_value);
+                                self.writeValue(@truncate(self.preset_value));
                                 self.mode3_destination_value = self.mode3_half_value;
                                 if (self.gate == 1) {
                                     self.state = .countdown;
@@ -351,13 +365,13 @@ pub fn Type(comptime cfg: TypeConfig) type {
                                 }
                                 return bus;
                             },
+                            else => {},
                         }
                     },
                     .MODE4, .MODE5 => {
                         std.debug.panic("CTC MODE4 and MODE5 not implemented", .{});
                         return bus;
                     },
-                    else => {},
                 }
 
                 if (self.state == .init) {
@@ -367,6 +381,63 @@ pub fn Type(comptime cfg: TypeConfig) type {
                     } else {
                         self.state = .init_done;
                     }
+                }
+                return bus;
+            }
+
+            pub fn setGATE(self: *Counter, value: u1, in_bus: Bus) Bus {
+                var bus = in_bus;
+                if (self.gate == value) return bus;
+
+                self.gate = value;
+                if (self.state == .init) return bus;
+
+                switch (self.mode) {
+                    .MODE0 => {
+                        if (self.gate == 0) {
+                            self.state = .wait_gate_high;
+                        } else {
+                            if (self.out == 0) {
+                                self.state = .countdown;
+                            } else {
+                                self.state = .blind_count;
+                            }
+                        }
+                    },
+                    .MODE1 => {
+                        if (self.gate == 0) {
+                            if (self.state == .blind_count) {
+                                self.state = .wait_gate_high;
+                            }
+                        } else {
+                            switch (self.state) {
+                                .load_done, .wait_gate_high, .countdown => {
+                                    self.state = .preset;
+                                },
+                                .init_done => {
+                                    // GATE was set to high before LOAD was completed
+                                    bus = self.setOut(0, bus);
+                                    self.state = .mode1_trigger_error;
+                                },
+                                else => {},
+                            }
+                        }
+                    },
+                    .MODE2, .MODE3 => {
+                        if (self.gate == 0) {
+                            if ((self.state == .countdown) or (self.state == .preset)) {
+                                bus = self.setOut(1, bus);
+                                self.state = .wait_gate_high;
+                            }
+                        } else {
+                            if (self.state == .wait_gate_high) {
+                                self.state = .preset;
+                            }
+                        }
+                    },
+                    .MODE4, .MODE5 => {
+                        std.debug.panic("CTC MODE4 and MODE5 not implemented", .{});
+                    },
                 }
                 return bus;
             }
@@ -383,7 +454,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 return if (self.bcd) bcdFromInt(@truncate(value)) else @truncate(value);
             }
 
-            pub fn writeCTRL(self: *Counter, bus: Bus) Bus {
+            pub fn writeControl(self: *Counter, bus: Bus) Bus {
                 const data = getData(bus);
                 const read_load_format: READ_LOAD_FORMAT = @enumFromInt((data >> 4) & 0b11);
                 self.read_load_msb = false;
@@ -553,6 +624,42 @@ pub fn Type(comptime cfg: TypeConfig) type {
             return bus;
         }
 
+        /// Set CLK of counter to value on the bus
+        pub fn setCLK0(self: *Self, bus: Bus) Bus {
+            const value: u1 = @truncate(bus & CLK0);
+            return self.counter[0].setCLK(value, bus);
+        }
+
+        /// Set CLK of counter to value on the bus
+        pub fn setCLK1(self: *Self, bus: Bus) Bus {
+            const value: u1 = @truncate(bus & CLK1);
+            return self.counter[1].setCLK(value, bus);
+        }
+
+        /// Set CLK of counter to value on the bus
+        pub fn setCLK2(self: *Self, bus: Bus) Bus {
+            const value: u1 = @truncate(bus & CLK2);
+            return self.counter[2].setCLK(value, bus);
+        }
+
+        /// Set GATE of counter to value on the bus
+        pub fn setGATE0(self: *Self, bus: Bus) Bus {
+            const value: u1 = @truncate(bus & GATE0);
+            return self.counter[0].setGATE(value, bus);
+        }
+
+        /// Set GATE of counter to value on the bus
+        pub fn setGATE1(self: *Self, bus: Bus) Bus {
+            const value: u1 = @truncate(bus & GATE1);
+            return self.counter[1].setGATE(value, bus);
+        }
+
+        /// Set GATE of counter to value on the bus
+        pub fn setGATE2(self: *Self, bus: Bus) Bus {
+            const value: u1 = @truncate(bus & GATE2);
+            return self.counter[2].setGATE(value, bus);
+        }
+
         /// Write a value to the CTC
         pub fn write(self: *Self, in_bus: Bus) Bus {
             const data = getData(in_bus);
@@ -562,7 +669,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                     const sc = data & 0b11000000;
                     if (sc == CTRL.SC.ILLEGAL) return in_bus;
                     const cs = sc >> 6;
-                    return self.counter[cs].writeCTRL(in_bus);
+                    return self.counter[cs].writeControl(in_bus);
                 },
                 else => {
                     const cs = addr;

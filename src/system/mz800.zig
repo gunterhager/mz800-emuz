@@ -99,6 +99,13 @@ const CTC_PINS = intel8253.Pins{
     .OUT2 = 112,
 };
 
+const CTC_CLK0 = mask(Bus, CTC_PINS.CLK0);
+const CTC_CLK1 = mask(Bus, CTC_PINS.CLK1);
+const CTC_CLK2 = mask(Bus, CTC_PINS.CLK2);
+const CTC_GATE0 = mask(Bus, CTC_PINS.GATE0);
+const CTC_GATE1 = mask(Bus, CTC_PINS.GATE1);
+const CTC_GATE2 = mask(Bus, CTC_PINS.GATE2);
+
 /// GDG bus definitions
 const GDG_PINS = gdg_whid65040_032.Pins{
     .ABUS = CPU_PINS.ABUS,
@@ -241,9 +248,15 @@ pub fn Type() type {
         // TODO: implement PSG
 
         video: struct {
-            tick: usize = 0,
-            h_tick: usize = 0,
+            ticks: usize = 0,
+            h_ticks: usize = 0,
             v_count: usize = 0,
+        } = .{},
+
+        // Internal clock for the emulator. Counts CLK0 ticks from emulator boot.
+        // With CLK0 frequency about 17.7 MHz the 64-bit counter should allow for roughly 32K years.
+        clock: struct {
+            ticks: u64 = 0,
         } = .{},
 
         mem: Memory,
@@ -315,18 +328,31 @@ pub fn Type() type {
             self.cpu.reset();
         }
 
-        // 17.734475 MHz = 56.387347243152 ns(p)
         pub fn exec(self: *Self, micro_seconds: u32) u32 {
             var bus = self.bus;
             const CLK0: u64 = @intFromFloat(frequencies.CLK0);
             const num_ticks = clock.microSecondsToTicks(CLK0, micro_seconds);
-            for (0..num_ticks) |ticks| {
+            for (0..num_ticks) |_| {
+                self.clock.ticks += 1;
                 // CPU tick
-                if ((ticks % clock_dividers.CPU_CLK) == 0) {
+                if ((self.clock.ticks % clock_dividers.CPU_CLK) == 0) {
                     bus = self.tick(bus);
                 }
-                // CTC CLK0 tick
-                if ((ticks % clock_dividers.CKMS) == 0) {}
+                // CTC CLK0 tick, CTC counters count only falling edge so we need to
+                // toggle the signal at clock divider / 2
+                if ((self.clock.ticks % (clock_dividers.CKMS / 2)) == 0) {
+                    // Toggle CLK0
+                    bus = (bus & ~CTC_CLK0) | (~bus & CTC_CLK0);
+                    bus = self.ctc.setCLK0(bus);
+                }
+                // CTC CLK1 tick, CTC counters count only falling edge so we need to
+                // toggle the signal at clock divider / 2
+                if ((self.clock.ticks % (clock_dividers.HSYN / 2)) == 0) {
+                    // Toggle CLK1
+                    bus = (bus & ~CTC_CLK1) | (~bus & CTC_CLK1);
+                    bus = self.ctc.setCLK1(bus);
+                }
+                // Video tick
                 bus = self.videoTick(bus);
             }
             self.bus = bus;
@@ -388,13 +414,13 @@ pub fn Type() type {
         }
 
         fn videoTick(self: *Self, bus: Bus) Bus {
-            self.video.tick += 1;
-            if (self.video.tick == video.screen.frame) {
-                self.video.tick = 0;
+            self.video.ticks += 1;
+            if (self.video.ticks == video.screen.frame) {
+                self.video.ticks = 0;
             }
-            self.video.h_tick += 1;
-            if (self.video.h_tick == video.screen.horizontal.line) {
-                self.video.h_tick = 0;
+            self.video.h_ticks += 1;
+            if (self.video.h_ticks == video.screen.horizontal.line) {
+                self.video.h_ticks = 0;
                 self.video.v_count += 1;
                 if (self.video.v_count == video.screen.height) {
                     self.video.v_count = 0;
@@ -402,8 +428,8 @@ pub fn Type() type {
             }
 
             // Convert to coordinates if beam is in visible area
-            if (videoHTickToFrameX(self.video.h_tick)) |x| {
-                if (videoTickToFrameY(self.video.tick)) |y| {
+            if (videoHTickToFrameX(self.video.h_ticks)) |x| {
+                if (videoTickToFrameY(self.video.ticks)) |y| {
                     const index = framebufferIndex(x, y);
 
                     // Video status updates
