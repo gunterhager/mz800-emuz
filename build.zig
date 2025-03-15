@@ -10,6 +10,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const dep_sokol = b.dependency("sokol", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const mod_chips = b.addModule("chips", .{
         .root_source_file = b.path("src/chips/chips.zig"),
         .target = target,
@@ -19,10 +24,26 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const mod_system = b.addModule("system", .{
+        .root_source_file = b.path("src/system/system.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "chipz", .module = dep_chipz.module("chipz") },
+            .{ .name = "chips", .module = mod_chips },
+        },
+    });
+
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "chipz", .module = dep_chipz.module("chipz") },
+            .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+            .{ .name = "chips", .module = mod_chips },
+            .{ .name = "system", .module = mod_system },
+        },
     });
 
     const exe = b.addExecutable(.{
@@ -46,5 +67,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .mod_chips = mod_chips,
+        .mod_system = mod_system,
     });
 }

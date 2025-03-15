@@ -44,7 +44,7 @@ defc ReadFormatSearch = 010000000b
 defc ReadFormatMZ700       = 000000001b
 
 ;------------------------------------------
-; Display mode
+; Display mode (WR)
 
 defc PortDisplayModeRegister = 0ceh
 
@@ -57,6 +57,11 @@ defc DisplayMode640x200_1ColorFrameB = 00101b
 defc DisplayMode640x200_4Color       = 00110b
 
 defc DisplayMode40x25_8ColorMZ700    = 01000b
+
+;------------------------------------------
+; Status (RD)
+
+defc PortStatusRegister = 0ceh
 
 ;------------------------------------------
 ; Colors
@@ -106,3 +111,14 @@ defc PaletteBlock0 = 01000000b
 defc PaletteBlock1 = 01000001b
 defc PaletteBlock2 = 01000010b
 defc PaletteBlock3 = 01000011b
+
+;------------------------------------------
+; Scroll registers
+
+; All scroll registers share the same low port address
+defc PortScrollLow = 0cfh
+defc PortScrollOffset1High      = 001h
+defc PortScrollOffset2High      = 002h
+defc PortScrollWidthHigh        = 003h
+defc PortScrollStartAddressHigh = 004h
+defc PortScrollEndAddressHigh   = 005h

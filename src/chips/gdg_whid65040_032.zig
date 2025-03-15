@@ -22,6 +22,8 @@ pub const Pins = struct {
     RD: comptime_int,
     /// Write
     WR: comptime_int,
+    /// Chip select
+    CS: comptime_int,
 };
 
 /// Default pin configuration (mainly useful for debugging)
@@ -32,6 +34,7 @@ pub const DefaultPins = Pins{
     .IORQ = 26,
     .RD = 27,
     .WR = 28,
+    .CS = 29,
 };
 
 /// Comptime type configuration for GDG
@@ -47,7 +50,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         pub const Options = struct {
             cgrom: []const u8,
-            rgba8_buffer: [FRAMEBUFFER_SIZE_PIXEL]u32,
+            rgba8_buffer: []u32,
         };
 
         pub const DBUS = maskm(Bus, &cfg.pins.DBUS);
@@ -65,8 +68,10 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 pub const WF: u16 = 0x00cc;
                 /// Read format register (reading from VRAM)
                 pub const RF: u16 = 0x00cd;
+
                 /// Display mode register
                 pub const DMD: u16 = 0x00ce;
+
                 /// Scroll offset 1 register
                 pub const SOF1: u16 = 0x01cf;
                 /// Scroll offset 2 register
@@ -77,10 +82,13 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 pub const SSA: u16 = 0x04cf;
                 /// Scroll end address register
                 pub const SEA: u16 = 0x05cf;
+
                 /// Border color register
                 pub const BCOL: u16 = 0x06cf;
+
                 /// Clock switch register
                 pub const CKSW: u16 = 0x07cf;
+
                 /// Palette register
                 pub const PAL: u16 = 0x00f0;
             };
@@ -131,7 +139,16 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         /// Status register
         pub const STATUS_MODE = struct {
+            pub const TEMPO: u8 = 1 << 0;
             pub const MZ800: u8 = 1 << 1;
+            // Low active: 0 .. VSYNC active, 1 .. inactive
+            pub const VSYNC: u8 = 1 << 4;
+            // Low active: 0 .. HSYNC active, 1 .. inactive
+            pub const HSYNC: u8 = 1 << 5;
+            // Low active: 0 .. VBLANK active, 1 .. inactive
+            pub const VBLANK: u8 = 1 << 6;
+            // Low active: 0 .. HBLANK active, 1 .. inactive
+            pub const HBLANK: u8 = 1 << 7;
         };
 
         /// Color intensity helper function
@@ -196,9 +213,12 @@ pub fn Type(comptime cfg: TypeConfig) type {
         pub const ILLEGAL_READ_VALUE: u8 = 0xff;
 
         // Display size
-        pub const DISPLAY_WIDTH = 640;
+        pub const DISPLAY_MZ700_WIDTH = 40;
+        pub const DISPLAY_MZ700_HEIGHT = 25;
+        pub const DISPLAY_HIRES_WIDTH = 640;
+        pub const DISPLAY_LORES_WIDTH = 320;
         pub const DISPLAY_HEIGHT = 200;
-        pub const FRAMEBUFFER_SIZE_PIXEL = DISPLAY_WIDTH * DISPLAY_HEIGHT;
+        pub const FRAMEBUFFER_SIZE_PIXEL = DISPLAY_HIRES_WIDTH * DISPLAY_HEIGHT;
 
         // GDG Registers
 
@@ -206,26 +226,31 @@ pub fn Type(comptime cfg: TypeConfig) type {
         wf: u8 = 0,
         /// Read format register (reading from VRAM)
         rf: u8 = 0,
+
         /// Display mode register
         dmd: u8 = 0,
+
         /// Display status register
         /// BLNK, SYNC, SW1 Mode switch, TEMPO
         status: u8 = 0,
+
         /// Scroll Registers need to be set in increments of 0x5.
-        /// Scroll offsets have a range from 0x0 to 0x3e8, stored
-        /// as 10 bit number in two registers SOF1 and SOF2.
-        /// Scroll offset 1 register
-        sof1: u8 = 0,
-        /// Scroll offset 2 register
-        sof2: u8 = 0,
+        ///
+        /// Scroll offsets have a range from 0x0 to 0x3e8, written
+        /// as 10 bit number into two registers SOF1 and SOF2.
+        ///
+        /// Scroll offset register (0x0 to 0x3e8)
+        sof: u16 = 0,
         /// Scroll width register (0x0 to 0x7d)
-        sw: u8 = 0,
+        sw: u16 = 0,
         /// Scroll start address register (0x0 to 0x78)
-        ssa: u8 = 0,
+        ssa: u16 = 0,
         /// Scroll end address register (0x5 to 0x7d)
-        sea: u8 = 0,
+        sea: u16 = 0,
+
         /// Border color register
         bcol: u8 = 0,
+
         /// Palette registers
         plt: [PALETTE_SIZE]u4 = [_]u4{0} ** PALETTE_SIZE,
         /// Palette registers in RGBA8 format
@@ -251,7 +276,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         /// RGBA8 buffer for displaying color graphics on screen.
         /// Uses 8bit color components.
-        rgba8_buffer: [FRAMEBUFFER_SIZE_PIXEL]u32,
+        rgba8_buffer: []u32,
 
         /// Indicates if machine is in MZ-700 mode. This is actually toggled by setting the DMD register.
         is_mz700: bool = false,
@@ -286,23 +311,36 @@ pub fn Type(comptime cfg: TypeConfig) type {
             return self;
         }
 
+        fn resetRGBA8Buffer(self: *Self) void {
+            for (0..self.rgba8_buffer.len) |index| {
+                self.rgba8_buffer[index] = 0;
+            }
+        }
+
+        fn resetVRAM(self: *Self) void {
+            self.vram1 = std.mem.zeroes(@TypeOf((self.vram1)));
+            self.vram2 = std.mem.zeroes(@TypeOf((self.vram2)));
+        }
+
+        fn resetScroll(self: *Self) void {
+            self.sof = 0;
+            self.sw = 0x7d;
+            self.ssa = 0;
+            self.sea = 0x7d;
+        }
+
         /// Reset GDG instance
         pub fn reset(self: *Self) void {
             self.wf = 0;
             self.rf = 0;
             self.status = 0; // needs to be set before setting DMD
             self.set_dmd(0);
-            self.sof1 = 0;
-            self.sof2 = 0;
-            self.sw = 0;
-            self.ssa = 0;
-            self.sea = 0;
+            self.resetScroll();
             self.bcol = 0;
             self.plt = std.mem.zeroes(@TypeOf((self.plt)));
             self.plt_sw = 0;
-            self.vram1 = std.mem.zeroes(@TypeOf((self.vram1)));
-            self.vram2 = std.mem.zeroes(@TypeOf((self.vram2)));
-            self.rgba8_buffer = std.mem.zeroes(@TypeOf(self.rgba8_buffer));
+            self.resetVRAM();
+            self.resetRGBA8Buffer();
         }
 
         /// Execute one clock cycle
@@ -355,54 +393,57 @@ pub fn Type(comptime cfg: TypeConfig) type {
                             self.set_dmd(value);
                         },
                         // Scroll registers and border color register share the same lower address
+                        // The scroll registers are shifted up for easier calculations later.
                         (IO_ADDR.WR.SOF1 & 0xff) => {
                             switch (addr) {
-                                // Scroll offset register 1
+                                // Scroll offset register 1 (lower byte)
                                 IO_ADDR.WR.SOF1 => {
-                                    self.sof1 = value;
+                                    self.sof = (self.sof & (0b11 << 11)) | (@as(u16, value) << 3);
                                 },
-                                // Scroll offset register 2
+                                // Scroll offset register 2 (upper byte)
                                 IO_ADDR.WR.SOF2 => {
-                                    // only the two lowest bits can be set
-                                    self.sof2 = value & 0x03;
+                                    // only the two lowest bits of value are used
+                                    self.sof = (self.sof & (0xff << 3)) | (@as(u16, value & 0b11) << 11);
                                 },
                                 // Scroll width register
                                 IO_ADDR.WR.SW => {
                                     // Bit 7 can't be set
-                                    self.sw = value & (~(1 << 7));
+                                    self.sw = @as(u16, value & 0x7f) << 6;
                                 },
                                 // Scroll start address register
                                 IO_ADDR.WR.SSA => {
                                     // Bit 7 can't be set
-                                    self.ssa = value & (~(1 << 7));
+                                    self.ssa = @as(u16, value & 0x7f) << 6;
                                 },
                                 // Scroll end address register
                                 IO_ADDR.WR.SEA => {
                                     // Bit 7 can't be set
-                                    self.sea = value & (~(1 << 7));
+                                    self.sea = @as(u16, value & 0x7f) << 6;
                                 },
                                 // Border color register
                                 IO_ADDR.WR.BCOL => {
                                     // Only lower nibble can be set
                                     self.bcol = value & 0x0f;
                                 },
+                                else => {},
                             }
                         },
                         IO_ADDR.WR.PAL => {
                             // Set palette switch register
                             if ((value & PAL_SW) != 0) {
                                 // Two lowest bits contain the palette switch value.
-                                self.plt_sw = value & ((1 << 1) | 1);
+                                self.plt_sw = @truncate(value);
                             } else {
                                 // High 3 bits contain palette register index
-                                const index: comptime_int = value >> 4;
+                                const index = value >> 4;
                                 // Lower nibble contains color code in IRGB
-                                const color: u4 = value & 0x0f;
+                                const color: u4 = @truncate(value);
                                 // Set palette register to color
                                 self.plt[index] = color;
                                 self.plt_rgba8[index] = COLOR.all[color];
                             }
                         },
+                        else => {},
                     }
                 },
                 else => {},
@@ -421,6 +462,14 @@ pub fn Type(comptime cfg: TypeConfig) type {
             } else {
                 self.status |= STATUS_MODE.MZ800;
             }
+        }
+
+        pub fn isHires(self: *Self) bool {
+            return (self.dmd & DMD_MODE.HIRES) != 0;
+        }
+
+        pub fn isHicolor(self: *Self) bool {
+            return (self.dmd & DMD_MODE.HICOLOR) != 0;
         }
 
         /// Translate address bus to VRAM addresses in hires mode.
@@ -447,8 +496,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
                     return self.vram1[addr];
                 }
             } else {
-                const hires = (self.dmd & DMD_MODE.HIRES) != 0;
-                const hicolor = (self.dmd & DMD_MODE.HICOLOR) != 0;
+                const hires = self.isHires();
+                const hicolor = self.isHicolor();
 
                 if (addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {
                     return ILLEGAL_READ_VALUE;
@@ -562,7 +611,6 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         /// Write a byte to VRAM. What gets actually written depends on the
         /// write format register of the GDG and the display mode.
-        /// Pixel data will also be written to the RGBA8 buffer.
         pub fn mem_wr(self: *Self, addr: u16, data: u8) void {
             if (self.is_mz700) {
                 if ((self.wf != RF_MODE.PLANE_I) or (addr > VRAM_MAX_MZ700_ADDR)) {
@@ -571,8 +619,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
                     self.vram1[addr] = data;
                 }
             } else {
-                const hires = (self.dmd & DMD_MODE.HIRES) != 0;
-                const hicolor = (self.dmd & DMD_MODE.HICOLOR) != 0;
+                const hires = self.isHires();
+                const hicolor = self.isHicolor();
 
                 if (addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {
                     return;
@@ -615,43 +663,32 @@ pub fn Type(comptime cfg: TypeConfig) type {
                     }
                 }
             }
-            // Decode VRAM into RGBA8 buffer
-            self.decode_vram(addr);
-        }
-
-        /// Decode one byte of VRAM into the RGBA8 buffer.
-        fn decode_vram(self: *Self, addr: u16) void {
-            if (self.is_mz700) {
-                self.decode_vram_mz700(addr);
-            } else {
-                self.decode_vram_mz800(addr);
-            }
         }
 
         /// Decode one byte of VRAM into the RGBA8 buffer in MZ-700 mode.
-        fn decode_vram_mz700(self: *Self, addr: u16) void {
+        pub fn decode_vram_mz700(self: *Self, addr: u16, char_byte_index: usize, fb_index: u32) void {
             // Convert addr to address offsets in character VRAM and color VRAM
-            // Character range: 0x0000 - 0x03f7
+            // Character VRAM range: 0x0000 - 0x03f7
             const character_code_addr: u16 = if (addr >= 0x0800) (addr - 0x0800) else addr;
-            // Color range: 0x0800 - 0x0bf7
+            // Color VRAM range: 0x0800 - 0x0bf7
             const color_addr: u16 = if (addr >= 0x0800) addr else (addr + 0x0800);
 
             // Convert color code to foreground and background colors
             const color_code = self.vram1[color_addr];
             var fg_color_code = (color_code & 0x70) >> 4;
             // All colors except black should be high intensity
-            fg_color_code = if (fg_color_code == 0) 0 else fg_color_code | (1 << 7);
+            fg_color_code = if (fg_color_code == 0) 0 else fg_color_code | (1 << 3);
             const fg_color = COLOR.all[fg_color_code];
             var bg_color_code = color_code & 0x07;
             // All colors except black should be high intensity
-            bg_color_code = if (bg_color_code == 0) 0 else bg_color_code | (1 << 7);
+            bg_color_code = if (bg_color_code == 0) 0 else bg_color_code | (1 << 3);
             const bg_color = COLOR.all[bg_color_code];
 
             // Use bit 7 of color code to select start address in character ROM.
             const use_alternate_characters = (color_code & (1 << 7)) != 0;
 
             // Convert character code to address offset in character ROM.
-            const character_code = self.vram1[character_code_addr];
+            const character_code: u16 = self.vram1[character_code_addr];
             // Each character consists of 8 byte
             var character_addr: u16 = character_code * 8;
             if (use_alternate_characters) {
@@ -660,53 +697,37 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 character_addr += 256 * 8;
             }
 
-            // Calculate character coordinates
-
-            // 40 characters on a line
-            const column: u32 = character_code_addr % 40;
-            // 25 lines
-            const row: u32 = character_code_addr / 40;
-            // Width of character in hires pixel
-            const character_width: u32 = 8 * 2;
-            // Width of line in hires pixel
-            const line_width: u32 = 40 * character_width;
-            // Height of character in pixel
-            const character_height: u32 = 8;
-            // Character start address in RGBA8 buffer
-            const character_pixel_addr: u32 = column * character_width + row * line_width * character_height;
-
             // Character data lookup and copy to RGBA8 buffer
-            for (0..8) |char_byte_index| {
-                const char_byte = self.cgrom[character_addr + char_byte_index];
-                // Pixel index in rgba8_buffer
-                var index: u32 = character_pixel_addr;
-                const offset: u32 = @as(u32, @intCast(char_byte_index)) * line_width;
-                for (0..8) |bit| {
-                    // Get color for pixel
-                    const foreground = ((char_byte >> @intCast(bit)) & 0x01) == 1;
-                    const color = if (foreground) fg_color else bg_color;
+            const char_byte = self.cgrom[character_addr + char_byte_index];
+            // Pixel index in rgba8_buffer
+            var index: u32 = fb_index;
+            for (0..8) |bit| {
+                // Get color for pixel
+                const foreground = ((char_byte >> @intCast(bit)) & 0x01) == 1;
+                const color = if (foreground) fg_color else bg_color;
 
-                    // Write character data to RGBA8 buffer (in 320x200 resolution, 2 bytes per pixel)
-                    self.rgba8_buffer[index + offset] = color;
-                    index += 1;
-                    self.rgba8_buffer[index + offset] = color;
-                    index += 1;
-                }
+                // Write character data to RGBA8 buffer (in 320x200 resolution, 2 bytes per pixel)
+                self.rgba8_buffer[index] = color;
+                index += 1;
+                self.rgba8_buffer[index] = color;
+                index += 1;
             }
         }
 
         /// Decode one byte of VRAM into the RGBA8 buffer in MZ-800 mode.
-        fn decode_vram_mz800(self: *Self, addr: u16) void {
-            const hires = (self.dmd & DMD_MODE.HIRES) != 0;
-            const hicolor = (self.dmd & DMD_MODE.HICOLOR) != 0;
-
-            // Pixel index in rgba8_buffer, in lores we write 2 pixels for each lores pixel
-            var index: u32 = addr * 8 * (if (hires) @as(u8, 1) else @as(u8, 2));
+        /// VRAM addr starts at 0x0.
+        /// fb_index is the index in the framebuffer where the 8 pixels should be set.
+        pub fn decode_vram_mz800(self: *Self, in_addr: u16, fb_index: u32) void {
+            const hires = self.isHires();
+            const hicolor = self.isHicolor();
 
             // VRAM address check
-            if (addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {
+            if (in_addr > (if (hires) VRAM_MAX_HIRES_ADDR else VRAM_MAX_LORES_ADDR)) {
                 return;
             }
+
+            // Scroll
+            const addr = self.scroll(in_addr);
 
             // Get VRAM bytes for each plane
             var planeI_data: u8 = 0;
@@ -727,6 +748,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
             // Each bit represents 1 pixel. The color is determined by combining bits of
             // each plane.
             // We need to set one byte of RGBA8 buffer for each VRAM bit (2 bytes in 320x200 mode)
+            var index = fb_index;
             for (0..8) |bit_index| {
                 const bit: u3 = @intCast(bit_index);
                 // Combine bits of each plane into a byte
@@ -772,6 +794,26 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 }
                 self.rgba8_buffer[index] = color;
                 index += 1;
+            }
+        }
+
+        /// Returns scrolled display address (works only in MZ-800 mode)
+        inline fn scroll(self: *Self, display_address: u16) u16 {
+            // Check if scrolling is enabled
+            if ((self.sof == 0) or (self.ssa > 0x1e00) or (self.sea < 0x0140) or (self.sw <= self.sof) or (self.sea <= self.ssa) or (self.sw != (self.sea - self.ssa))) {
+                return display_address;
+            }
+
+            // Is address in scroll area?
+            if ((display_address < self.ssa) or (display_address >= self.sea)) {
+                return display_address;
+            }
+
+            // Check if we need to scroll down
+            if (display_address >= (self.sea - self.sof)) {
+                return display_address + self.sof - self.sw;
+            } else {
+                return display_address + self.sof;
             }
         }
     };
