@@ -63,12 +63,7 @@ export fn frame() void {
         .dpi_scale = sapp.dpiScale(),
     });
 
-    // === UI CODE STARTS HERE
-    ig.igSetNextWindowPos(.{ .x = 10, .y = 10 }, ig.ImGuiCond_Once);
-    ig.igSetNextWindowSize(.{ .x = 400, .y = 100 }, ig.ImGuiCond_Once);
-    _ = ig.igBegin("Hello Dear ImGui!", 0, ig.ImGuiWindowFlags_None);
-    ig.igEnd();
-    // === UI CODE ENDS HERE
+    uiDrawMenu();
 
     host.gfx.draw(.{
         .display = sys.displayInfo(),
@@ -83,6 +78,51 @@ export fn frame() void {
 
 pub fn renderGUI() void {
     simgui.render();
+}
+
+fn uiDrawMenu() void {
+    if (ig.igBeginMainMenuBar()) {
+        if (ig.igBeginMenu("System")) {
+            if (ig.igMenuItem("Reset")) {
+                sys.reset(false);
+            }
+            if (ig.igMenuItem("Soft Reset")) {
+                sys.reset(true);
+            }
+            ig.igEndMenu();
+        }
+        if (ig.igBeginMenu("Hardware")) {
+            if (ig.igMenuItem("Z80")) {
+                // TODO: open chip window
+            }
+            if (ig.igMenuItem("Z80 PIO")) {
+                // TODO: open chip window
+            }
+            if (ig.igMenuItem("i8255 PPI")) {
+                // TODO: open chip window
+            }
+            if (ig.igMenuItem("i8253 CTC")) {
+                // TODO: open chip window
+            }
+            ig.igEndMenu();
+        }
+        if (ig.igBeginMenu("Debug")) {
+            if (ig.igMenuItem("CPU Debugger")) {
+                // TODO: open window
+            }
+            if (ig.igMenuItem("Breakpoints")) {
+                // TODO: open window
+            }
+            if (ig.igBeginMenu("Memory Editor")) {
+                if (ig.igMenuItem("VRAM")) {
+                    // TODO: open window
+                }
+                ig.igEndMenu();
+            }
+            ig.igEndMenu();
+        }
+        ig.igEndMainMenuBar();
+    }
 }
 
 export fn cleanup() void {
