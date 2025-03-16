@@ -20,6 +20,9 @@ const mz700_name = "MZ-700";
 var sys: MZ800 = undefined;
 var gpa = GeneralPurposeAllocator(.{}){};
 
+const ig = @import("cimgui");
+const simgui = sokol.imgui;
+
 export fn init() void {
     std.debug.print("🚨 Booting MZ-800...\n", .{});
     host.audio.init(.{});
@@ -37,6 +40,11 @@ export fn init() void {
             .height = 2,
         },
     });
+    // initialize sokol-imgui
+    simgui.setup(.{
+        .logger = .{ .func = slog.func },
+    });
+    host.gfx.addDrawFunc(renderGUI);
 }
 
 export fn frame() void {
@@ -46,6 +54,22 @@ export fn frame() void {
     const num_ticks = sys.exec(frame_time);
     host.prof.pushMicroSeconds(.EMU, host.time.emuEnd());
     const name = if (sys.gdg.is_mz700) mz700_name else mz800_name;
+
+    // call simgui.newFrame() before any ImGui calls
+    simgui.newFrame(.{
+        .width = sapp.width(),
+        .height = sapp.height(),
+        .delta_time = sapp.frameDuration(),
+        .dpi_scale = sapp.dpiScale(),
+    });
+
+    // === UI CODE STARTS HERE
+    ig.igSetNextWindowPos(.{ .x = 10, .y = 10 }, ig.ImGuiCond_Once);
+    ig.igSetNextWindowSize(.{ .x = 400, .y = 100 }, ig.ImGuiCond_Once);
+    _ = ig.igBegin("Hello Dear ImGui!", 0, ig.ImGuiWindowFlags_None);
+    ig.igEnd();
+    // === UI CODE ENDS HERE
+
     host.gfx.draw(.{
         .display = sys.displayInfo(),
         .status = .{
@@ -57,7 +81,12 @@ export fn frame() void {
     });
 }
 
+pub fn renderGUI() void {
+    simgui.render();
+}
+
 export fn cleanup() void {
+    simgui.shutdown();
     host.gfx.shutdown();
     host.prof.shutdown();
     host.audio.shutdown();
@@ -66,6 +95,9 @@ export fn cleanup() void {
 export fn input(ev: ?*const sapp.Event) void {
     const event = ev.?;
     // const shift = (0 != (event.modifiers & sapp.modifier_shift));
+
+    // forward input events to sokol-imgui
+    _ = simgui.handleEvent(event.*);
 
     switch (event.type) {
         .CHAR => {
@@ -101,7 +133,7 @@ fn handleDroppedFiles() void {
 pub fn main() void {
     const display = MZ800.displayInfo(null);
     const width = display.view.width;
-    const height = 2 * display.view.height;
+    const height = display.view.height;
     std.debug.print("🚨 Display: {}x{}\n", .{ width, height });
     sapp.run(.{
         .init_cb = init,
@@ -110,7 +142,7 @@ pub fn main() void {
         .cleanup_cb = cleanup,
         .window_title = mz800_name,
         .width = width,
-        .height = height,
+        .height = 2 * height,
         .icon = .{ .sokol_default = true },
         .logger = .{ .func = slog.func },
         .enable_dragndrop = true,
