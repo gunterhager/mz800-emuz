@@ -146,7 +146,6 @@ test "ASCII others" {
     };
 
     for (other_characters) |item| {
-        std.debug.print("0x{x} -> 0x{x} {c}\n", .{ item[0], item[1], item[1] });
         try expectEqual(item[1], MZASCII.mzToASCII(item[0]));
     }
 }

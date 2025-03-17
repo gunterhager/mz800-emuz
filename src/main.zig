@@ -13,7 +13,6 @@ const MZ800 = mz800.Type();
 const frequencies = mz800.frequencies;
 const mzf = system.mzf;
 const MZF = mzf.Type();
-const mzToASCII = system.mzascii.MZASCII.mzToASCII;
 
 const mz800_name = "MZ-800";
 const mz700_name = "MZ-700";
@@ -165,12 +164,7 @@ fn handleDroppedFiles() void {
     obj_file.load(std.fs.cwd(), path) catch |err| {
         std.debug.print("Error loading file '{s}': {}\n", .{ path, err });
     };
-    std.debug.print("🚨 Name: ", .{});
-    for (obj_file.header.name) |char| {
-        if (char == 0x0d) break;
-        std.debug.print("{c}", .{mzToASCII(char)});
-    }
-    std.debug.print("\n", .{});
+    std.debug.print("🚨 Name: {s}\n", .{obj_file.display_name});
     std.debug.print("🚨 Loading address: 0x{x:0>4}\n", .{obj_file.header.loading_address});
     std.debug.print("🚨 Starting address: 0x{x:0>4}\n", .{obj_file.header.start_address});
     sys.load(obj_file);
