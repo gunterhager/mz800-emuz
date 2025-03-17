@@ -1,5 +1,6 @@
 const std = @import("std");
 const expect = std.testing.expect;
+const expectEqual = std.testing.expectEqual;
 const expectApproxEqAbs = std.testing.expectApproxEqAbs;
 const mz800 = @import("system").mz800;
 const MZ800 = mz800.Type();
@@ -74,7 +75,7 @@ test "MZ800 bank switching" {
     try expect(checkCGROM(sut));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkROM2(sut));
-    try expect(sut.vram_banked_in == true);
+    try expectEqual(sut.vram_banked_in, true);
 
     const iorq_wr: mz800.Bus = mz800.IORQ | mz800.WR;
     const iorq_rd: mz800.Bus = mz800.IORQ | mz800.RD;
@@ -149,13 +150,13 @@ test "MZ800 bank switching" {
     try expect(checkRAM(sut, 0x1000, 0x1000));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkROM2(sut));
-    try expect(sut.vram_banked_in == false);
+    try expectEqual(sut.vram_banked_in, false);
 
     // RD SW0: CGROM and VRAM banked in (test only for VRAM)
     sut.bus = iorq_rd;
     sut.bus = mz800.setAddr(sut.bus, RD_MEM.SW0);
     sut.updateMemoryMap(sut.bus);
-    try expect(sut.vram_banked_in == true);
+    try expectEqual(sut.vram_banked_in, true);
 }
 
 test "MZ700 bank switching" {
@@ -168,7 +169,7 @@ test "MZ700 bank switching" {
     try expect(checkCGROM(sut));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkROM2(sut));
-    try expect(sut.vram_banked_in == true);
+    try expectEqual(sut.vram_banked_in, true);
 
     const iorq_wr: mz800.Bus = mz800.IORQ | mz800.WR;
     const iorq_rd: mz800.Bus = mz800.IORQ | mz800.RD;
@@ -190,7 +191,7 @@ test "MZ700 bank switching" {
     try expect(checkRAM(sut, 0x0000, 0x2000));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkRAM(sut, 0xe000, 0x2000));
-    try expect(sut.vram_banked_in == false);
+    try expectEqual(sut.vram_banked_in, false);
 
     // WR SW2: ROM1 banked in
     sut.bus = iorq_wr;
@@ -209,7 +210,7 @@ test "MZ700 bank switching" {
     try expect(checkRAM(sut, 0x1000, 0x1000));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkROM2(sut));
-    try expect(sut.vram_banked_in == true);
+    try expectEqual(sut.vram_banked_in, true);
 
     // WR SW0: ROM1 and CGROM banked out (to test WR SW4)
     sut.bus = iorq_wr;
@@ -226,7 +227,7 @@ test "MZ700 bank switching" {
     try expect(checkRAM(sut, 0x0000, 0x2000));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkRAM(sut, 0xe000, 0x2000));
-    try expect(sut.vram_banked_in == false);
+    try expectEqual(sut.vram_banked_in, false);
 
     // WR SW4: ROM1, ROM2, VRAM banked in, CGROM banked out
     sut.bus = iorq_wr;
@@ -236,7 +237,7 @@ test "MZ700 bank switching" {
     try expect(checkRAM(sut, 0x1000, 0x1000));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkROM2(sut));
-    try expect(sut.vram_banked_in == true);
+    try expectEqual(sut.vram_banked_in, true);
 
     // WR SW1: ROM2 and VRAM banked out (to test RD SW0)
     sut.bus = iorq_wr;
@@ -246,7 +247,7 @@ test "MZ700 bank switching" {
     try expect(checkRAM(sut, 0x1000, 0x1000));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkRAM(sut, 0xe000, 0x2000));
-    try expect(sut.vram_banked_in == false);
+    try expectEqual(sut.vram_banked_in, false);
 
     // RD SW0: CGROM and VRAM banked in
     sut.bus = iorq_rd;
@@ -256,7 +257,7 @@ test "MZ700 bank switching" {
     try expect(checkCGROM(sut));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkRAM(sut, 0xe000, 0x2000));
-    try expect(sut.vram_banked_in == true);
+    try expectEqual(sut.vram_banked_in, true);
 
     // RD SW1: CGROM and VRAM banked out
     sut.bus = iorq_rd;
@@ -266,5 +267,5 @@ test "MZ700 bank switching" {
     try expect(checkRAM(sut, 0x1000, 0x1000));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkRAM(sut, 0xe000, 0x2000));
-    try expect(sut.vram_banked_in == false);
+    try expectEqual(sut.vram_banked_in, false);
 }

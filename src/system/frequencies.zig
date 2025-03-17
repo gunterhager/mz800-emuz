@@ -14,13 +14,11 @@ pub const frequencies = struct {
     pub const TEMPO = osc556Frequency(1.8, 18, 1);
     /// System clock speed (PAL)
     /// Frequency: 17.734475 MHz
-    /// Period: 56.387347243152 nanoseconds
     pub const CLK0: comptime_float = 17.734475 * 1e6;
     /// CPU clock (PAL)
     pub const CPU_CLK: comptime_float = CLK0 / clock_dividers.CPU_CLK;
     /// CKMS,  i8253 CLK0 for counter 0
     /// Frequency: 1.10840469 MHz
-    /// Period: 902.19755385553 nanoseconds
     pub const CKMS: comptime_float = CLK0 / clock_dividers.CKMS;
     /// Horizontal sync HSYN (PAL), i8253 CLK1 for counter 1
     pub const HSYN: comptime_float = CLK0 / clock_dividers.HSYN;

@@ -13,6 +13,7 @@ const MZ800 = mz800.Type();
 const frequencies = mz800.frequencies;
 const mzf = system.mzf;
 const MZF = mzf.Type();
+const mzToASCII = system.mzascii.MZASCII.mzToASCII;
 
 const mz800_name = "MZ-800";
 const mz700_name = "MZ-700";
@@ -142,11 +143,11 @@ export fn input(ev: ?*const sapp.Event) void {
     switch (event.type) {
         .CHAR => {
             const c: u8 = @truncate(event.char_code);
-            std.debug.print("🚨 Char code: {}", .{c});
+            std.debug.print("🚨 Char code: {}\n", .{c});
         },
         .KEY_DOWN, .KEY_UP => {
             const code = event.key_code;
-            std.debug.print("🚨 Key code: {}", .{code});
+            std.debug.print("🚨 Key code: {}\n", .{code});
         },
         .FILES_DROPPED => {
             handleDroppedFiles();
@@ -164,7 +165,12 @@ fn handleDroppedFiles() void {
     obj_file.load(std.fs.cwd(), path) catch |err| {
         std.debug.print("Error loading file '{s}': {}\n", .{ path, err });
     };
-    std.debug.print("🚨 Name: {s}\n", .{obj_file.header.name});
+    std.debug.print("🚨 Name: ", .{});
+    for (obj_file.header.name) |char| {
+        if (char == 0x0d) break;
+        std.debug.print("{c}", .{mzToASCII(char)});
+    }
+    std.debug.print("\n", .{});
     std.debug.print("🚨 Loading address: 0x{x:0>4}\n", .{obj_file.header.loading_address});
     std.debug.print("🚨 Starting address: 0x{x:0>4}\n", .{obj_file.header.start_address});
     sys.load(obj_file);
