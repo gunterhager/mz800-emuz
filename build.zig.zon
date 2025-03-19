@@ -25,12 +25,12 @@
     // internet connectivity.
     .dependencies = .{
         .chipz = .{
-            .url = "git+https://github.com/gunterhager/chipz.git#7b45e39988e9535595389439896a7eb80129e74f",
-            .hash = "chipz-0.0.0-gW-vW6c-DwD-g9ai_agYS9I6fcJ1HaTHOP7fey3ecxfZ",
+            .url = "git+https://github.com/gunterhager/chipz.git#faf392deae7cc5efe2623203290fbcba72aead11",
+            .hash = "chipz-0.0.0-gW-vW4zPDwDAYdMxBGMcfKKlDU_g6gW6RelTAMwbmYCD",
         },
         .sokol = .{
-            .url = "git+https://github.com/floooh/sokol-zig.git#9fd3e75019b5015ab45aa5dee3a699955721f802",
-            .hash = "sokol-0.1.0-pb1HK0rZOQCGojU9hkELvtwS3O7FsQYgWy2g2ZKyaeLs",
+            .url = "git+https://github.com/floooh/sokol-zig.git#e91c8950945973fb93ef8766f81f1bf536fbed81",
+            .hash = "sokol-0.1.0-pb1HK7bbOQDXIb4E_w3Z-_mBStCNCwZdOBV6TnYhxIth",
         },
         .cimgui = .{
             .url = "git+https://github.com/floooh/dcimgui.git#3969c14f7c7abda0e4b59d2616b17b7fb9eb0827",
