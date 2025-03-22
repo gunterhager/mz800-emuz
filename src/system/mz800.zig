@@ -119,14 +119,14 @@ const GDG_PINS = gdg_whid65040_032.Pins{
 
 pub const Bus = u128;
 // Memory is mapped in 1K pages
-const Memory = memory.Type(.{ .page_size = 0x0400 });
-const Z80 = z80.Type(.{ .pins = CPU_PINS, .bus = Bus });
-const Z80PIO = z80pio.Type(.{ .pins = PIO_PINS, .bus = Bus });
-const PPI = intel8255.Type(.{ .pins = PPI_PINS, .bus = Bus });
-const CTC = intel8253.Type(.{ .pins = CTC_PINS, .bus = Bus });
-const GDG = gdg_whid65040_032.Type(.{ .pins = GDG_PINS, .bus = Bus });
-const KeyBuf = keybuf.Type(.{ .num_slots = 4 });
-const Audio = audio.Type(.{ .num_voices = 2 });
+pub const Memory = memory.Type(.{ .page_size = 0x0400 });
+pub const Z80 = z80.Type(.{ .pins = CPU_PINS, .bus = Bus });
+pub const Z80PIO = z80pio.Type(.{ .pins = PIO_PINS, .bus = Bus });
+pub const PPI = intel8255.Type(.{ .pins = PPI_PINS, .bus = Bus });
+pub const CTC = intel8253.Type(.{ .pins = CTC_PINS, .bus = Bus });
+pub const GDG = gdg_whid65040_032.Type(.{ .pins = GDG_PINS, .bus = Bus });
+pub const KeyBuf = keybuf.Type(.{ .num_slots = 4 });
+pub const Audio = audio.Type(.{ .num_voices = 2 });
 
 pub const getData = Z80.getData;
 pub const setData = Z80.setData;

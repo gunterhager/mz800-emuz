@@ -17,11 +17,92 @@ const MZF = mzf.Type();
 const mz800_name = "MZ-800";
 const mz700_name = "MZ-700";
 
+const ui = chipz.ui;
+const ig = @import("cimgui");
+const simgui = sokol.imgui;
+
+const UI_CHIP = ui.ui_chip.Type(.{ .bus = mz800.Bus });
+const UI_Z80 = ui.ui_z80.Type(.{ .bus = mz800.Bus, .cpu = mz800.Z80 });
+const UI_Z80_Pins = [_]UI_CHIP.Pin{
+    .{ .name = "D0", .slot = 0, .mask = mz800.Z80.D0 },
+    .{ .name = "D1", .slot = 1, .mask = mz800.Z80.D1 },
+    .{ .name = "D2", .slot = 2, .mask = mz800.Z80.D2 },
+    .{ .name = "D3", .slot = 3, .mask = mz800.Z80.D3 },
+    .{ .name = "D4", .slot = 4, .mask = mz800.Z80.D4 },
+    .{ .name = "D5", .slot = 5, .mask = mz800.Z80.D5 },
+    .{ .name = "D6", .slot = 6, .mask = mz800.Z80.D6 },
+    .{ .name = "D7", .slot = 7, .mask = mz800.Z80.D7 },
+    .{ .name = "M1", .slot = 8, .mask = mz800.Z80.M1 },
+    .{ .name = "MREQ", .slot = 9, .mask = mz800.Z80.MREQ },
+    .{ .name = "IORQ", .slot = 10, .mask = mz800.Z80.IORQ },
+    .{ .name = "RD", .slot = 11, .mask = mz800.Z80.RD },
+    .{ .name = "WR", .slot = 12, .mask = mz800.Z80.WR },
+    .{ .name = "RFSH", .slot = 13, .mask = mz800.Z80.RFSH },
+    .{ .name = "HALT", .slot = 14, .mask = mz800.Z80.HALT },
+    .{ .name = "INT", .slot = 15, .mask = mz800.Z80.INT },
+    .{ .name = "NMI", .slot = 16, .mask = mz800.Z80.NMI },
+    .{ .name = "WAIT", .slot = 17, .mask = mz800.Z80.WAIT },
+    .{ .name = "A0", .slot = 18, .mask = mz800.Z80.A0 },
+    .{ .name = "A1", .slot = 19, .mask = mz800.Z80.A1 },
+    .{ .name = "A2", .slot = 20, .mask = mz800.Z80.A2 },
+    .{ .name = "A3", .slot = 21, .mask = mz800.Z80.A3 },
+    .{ .name = "A4", .slot = 22, .mask = mz800.Z80.A4 },
+    .{ .name = "A5", .slot = 23, .mask = mz800.Z80.A5 },
+    .{ .name = "A6", .slot = 24, .mask = mz800.Z80.A6 },
+    .{ .name = "A7", .slot = 25, .mask = mz800.Z80.A7 },
+    .{ .name = "A8", .slot = 26, .mask = mz800.Z80.A8 },
+    .{ .name = "A9", .slot = 27, .mask = mz800.Z80.A9 },
+    .{ .name = "A10", .slot = 28, .mask = mz800.Z80.A10 },
+    .{ .name = "A11", .slot = 29, .mask = mz800.Z80.A11 },
+    .{ .name = "A12", .slot = 30, .mask = mz800.Z80.A12 },
+    .{ .name = "A13", .slot = 31, .mask = mz800.Z80.A13 },
+    .{ .name = "A14", .slot = 32, .mask = mz800.Z80.A14 },
+    .{ .name = "A15", .slot = 33, .mask = mz800.Z80.A15 },
+};
+const UI_Z80PIO = ui.ui_z80pio.Type(.{ .bus = mz800.Bus, .pio = mz800.Z80PIO });
+const UI_Z80PIO_Pins = [_]UI_CHIP.Pin{
+    .{ .name = "D0", .slot = 0, .mask = mz800.Z80.D0 },
+    .{ .name = "D1", .slot = 1, .mask = mz800.Z80.D1 },
+    .{ .name = "D2", .slot = 2, .mask = mz800.Z80.D2 },
+    .{ .name = "D3", .slot = 3, .mask = mz800.Z80.D3 },
+    .{ .name = "D4", .slot = 4, .mask = mz800.Z80.D4 },
+    .{ .name = "D5", .slot = 5, .mask = mz800.Z80.D5 },
+    .{ .name = "D6", .slot = 6, .mask = mz800.Z80.D6 },
+    .{ .name = "D7", .slot = 7, .mask = mz800.Z80.D7 },
+    .{ .name = "CE", .slot = 9, .mask = mz800.Z80PIO.CE },
+    .{ .name = "BASEL", .slot = 10, .mask = mz800.Z80PIO.BASEL },
+    .{ .name = "CDSEL", .slot = 11, .mask = mz800.Z80PIO.CDSEL },
+    .{ .name = "M1", .slot = 12, .mask = mz800.Z80PIO.M1 },
+    .{ .name = "IORQ", .slot = 13, .mask = mz800.Z80PIO.IORQ },
+    .{ .name = "RD", .slot = 14, .mask = mz800.Z80PIO.RD },
+    .{ .name = "INT", .slot = 15, .mask = mz800.Z80PIO.INT },
+    .{ .name = "ARDY", .slot = 20, .mask = mz800.Z80PIO.ARDY },
+    .{ .name = "ASTB", .slot = 21, .mask = mz800.Z80PIO.ASTB },
+    .{ .name = "PA0", .slot = 22, .mask = mz800.Z80PIO.PA0 },
+    .{ .name = "PA1", .slot = 23, .mask = mz800.Z80PIO.PA1 },
+    .{ .name = "PA2", .slot = 24, .mask = mz800.Z80PIO.PA2 },
+    .{ .name = "PA3", .slot = 25, .mask = mz800.Z80PIO.PA3 },
+    .{ .name = "PA4", .slot = 26, .mask = mz800.Z80PIO.PA4 },
+    .{ .name = "PA5", .slot = 27, .mask = mz800.Z80PIO.PA5 },
+    .{ .name = "PA6", .slot = 28, .mask = mz800.Z80PIO.PA6 },
+    .{ .name = "PA7", .slot = 29, .mask = mz800.Z80PIO.PA7 },
+    .{ .name = "BRDY", .slot = 30, .mask = mz800.Z80PIO.ARDY },
+    .{ .name = "BSTB", .slot = 31, .mask = mz800.Z80PIO.ASTB },
+    .{ .name = "PB0", .slot = 32, .mask = mz800.Z80PIO.PB0 },
+    .{ .name = "PB1", .slot = 33, .mask = mz800.Z80PIO.PB1 },
+    .{ .name = "PB2", .slot = 34, .mask = mz800.Z80PIO.PB2 },
+    .{ .name = "PB3", .slot = 35, .mask = mz800.Z80PIO.PB3 },
+    .{ .name = "PB4", .slot = 36, .mask = mz800.Z80PIO.PB4 },
+    .{ .name = "PB5", .slot = 37, .mask = mz800.Z80PIO.PB5 },
+    .{ .name = "PB6", .slot = 38, .mask = mz800.Z80PIO.PB6 },
+    .{ .name = "PB7", .slot = 39, .mask = mz800.Z80PIO.PB7 },
+};
+
 var sys: MZ800 = undefined;
 var gpa = GeneralPurposeAllocator(.{}){};
 
-const ig = @import("cimgui");
-const simgui = sokol.imgui;
+var ui_z80: UI_Z80 = undefined;
+var ui_z80pio: UI_Z80PIO = undefined;
 
 export fn init() void {
     std.debug.print("🚨 Booting MZ-800...\n", .{});
@@ -40,6 +121,27 @@ export fn init() void {
             .height = 2,
         },
     });
+
+    // Setting up debug UI
+    var start = ig.ImVec2{ .x = 20, .y = 20 };
+    const d = ig.ImVec2{ .x = 10, .y = 10 };
+    ui_z80.initInPlace(.{
+        .title = "Z80 CPU",
+        .cpu = &sys.cpu,
+        .origin = start,
+        .chip = .{ .name = "Z80\nCPU", .num_slots = 36, .pins = &UI_Z80_Pins },
+    });
+    start.x += d.x;
+    start.y += d.y;
+    ui_z80pio.initInPlace(.{
+        .title = "Z80 PIO",
+        .pio = &sys.pio,
+        .origin = start,
+        .chip = .{ .name = "Z80\nPIO", .num_slots = 40, .pins = &UI_Z80PIO_Pins },
+    });
+    start.x += d.x;
+    start.y += d.y;
+
     // initialize sokol-imgui
     simgui.setup(.{
         .logger = .{ .func = slog.func },
@@ -64,6 +166,8 @@ export fn frame() void {
     });
 
     uiDrawMenu();
+    ui_z80.draw(sys.bus);
+    ui_z80pio.draw(sys.bus);
 
     host.gfx.draw(.{
         .display = sys.displayInfo(),
@@ -93,10 +197,10 @@ fn uiDrawMenu() void {
         }
         if (ig.igBeginMenu("Hardware")) {
             if (ig.igMenuItem("Z80")) {
-                // TODO: open chip window
+                ui_z80.open = true;
             }
             if (ig.igMenuItem("Z80 PIO")) {
-                // TODO: open chip window
+                ui_z80pio.open = true;
             }
             if (ig.igMenuItem("i8255 PPI")) {
                 // TODO: open chip window
