@@ -121,7 +121,7 @@ pub const Bus = u128;
 // Memory is mapped in 1K pages
 pub const Memory = memory.Type(.{ .page_size = 0x0400 });
 pub const Z80 = z80.Type(.{ .pins = CPU_PINS, .bus = Bus });
-pub const Z80PIO = z80pio.Type(.{ .pins = PIO_PINS, .bus = Bus });
+pub const PIO = z80pio.Type(.{ .pins = PIO_PINS, .bus = Bus });
 pub const PPI = intel8255.Type(.{ .pins = PPI_PINS, .bus = Bus });
 pub const CTC = intel8253.Type(.{ .pins = CTC_PINS, .bus = Bus });
 pub const GDG = gdg_whid65040_032.Type(.{ .pins = GDG_PINS, .bus = Bus });
@@ -233,7 +233,7 @@ pub fn Type() type {
         cpu: Z80,
 
         // PIO Z80 PIO, parallel I/O unit
-        pio: Z80PIO,
+        pio: PIO,
 
         // PPI i8255, keyboard and cassette driver
         ppi: PPI,
@@ -284,7 +284,7 @@ pub fn Type() type {
             self.* = .{
                 .bus = 0,
                 .cpu = Z80.init(),
-                .pio = Z80PIO.init(),
+                .pio = PIO.init(),
                 .ppi = PPI.init(),
                 .ctc = CTC.init(),
                 .gdg = GDG.init(.{
