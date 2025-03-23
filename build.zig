@@ -43,6 +43,18 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const mod_ui = b.addModule("ui", .{
+        .root_source_file = b.path("src/ui/ui.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+            .{ .name = "cimgui", .module = dep_cimgui.module("cimgui") },
+            .{ .name = "chipz", .module = dep_chipz.module("chipz") },
+            .{ .name = "chips", .module = mod_chips },
+        },
+    });
+
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -53,6 +65,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "cimgui", .module = dep_cimgui.module("cimgui") },
             .{ .name = "chips", .module = mod_chips },
             .{ .name = "system", .module = mod_system },
+            .{ .name = "ui", .module = mod_ui },
         },
     });
 

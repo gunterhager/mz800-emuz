@@ -18,6 +18,7 @@ const mz800_name = "MZ-800";
 const mz700_name = "MZ-700";
 
 const ui = chipz.ui;
+const ui_intern = @import("ui");
 const ig = @import("cimgui");
 const simgui = sokol.imgui;
 
@@ -137,6 +138,31 @@ const UI_INTEL8255_Pins = [_]UI_CHIP.Pin{
     .{ .name = "PC6", .slot = 38, .mask = mz800.PPI.PC6 },
     .{ .name = "PC7", .slot = 39, .mask = mz800.PPI.PC7 },
 };
+const UI_INTEL8253 = ui_intern.ui_intel8253.Type(.{ .bus = mz800.Bus, .ctc = mz800.CTC });
+const UI_INTEL8253_Pins = [_]UI_CHIP.Pin{
+    .{ .name = "D0", .slot = 0, .mask = mz800.Z80.D0 },
+    .{ .name = "D1", .slot = 1, .mask = mz800.Z80.D1 },
+    .{ .name = "D2", .slot = 2, .mask = mz800.Z80.D2 },
+    .{ .name = "D3", .slot = 3, .mask = mz800.Z80.D3 },
+    .{ .name = "D4", .slot = 4, .mask = mz800.Z80.D4 },
+    .{ .name = "D5", .slot = 5, .mask = mz800.Z80.D5 },
+    .{ .name = "D6", .slot = 6, .mask = mz800.Z80.D6 },
+    .{ .name = "D7", .slot = 7, .mask = mz800.Z80.D7 },
+    .{ .name = "CS", .slot = 9, .mask = mz800.CTC.CS },
+    .{ .name = "RD", .slot = 10, .mask = mz800.CTC.RD },
+    .{ .name = "WR", .slot = 11, .mask = mz800.CTC.WR },
+    .{ .name = "A0", .slot = 12, .mask = mz800.Z80.A0 },
+    .{ .name = "A1", .slot = 13, .mask = mz800.Z80.A1 },
+    .{ .name = "CLK0", .slot = 16, .mask = mz800.CTC.CLK0 },
+    .{ .name = "GATE0", .slot = 17, .mask = mz800.CTC.GATE0 },
+    .{ .name = "OUT0", .slot = 18, .mask = mz800.CTC.OUT0 },
+    .{ .name = "CLK1", .slot = 20, .mask = mz800.CTC.CLK1 },
+    .{ .name = "GATE1", .slot = 21, .mask = mz800.CTC.GATE1 },
+    .{ .name = "OUT1", .slot = 22, .mask = mz800.CTC.OUT1 },
+    .{ .name = "CLK2", .slot = 24, .mask = mz800.CTC.CLK2 },
+    .{ .name = "GATE2", .slot = 25, .mask = mz800.CTC.GATE2 },
+    .{ .name = "OUT2", .slot = 26, .mask = mz800.CTC.OUT2 },
+};
 
 var sys: MZ800 = undefined;
 var gpa = GeneralPurposeAllocator(.{}){};
@@ -144,6 +170,7 @@ var gpa = GeneralPurposeAllocator(.{}){};
 var ui_z80: UI_Z80 = undefined;
 var ui_z80pio: UI_Z80PIO = undefined;
 var ui_intel8255: UI_INTEL8255 = undefined;
+var ui_intel8253: UI_INTEL8253 = undefined;
 
 export fn init() void {
     std.debug.print("🚨 Booting MZ-800...\n", .{});
@@ -190,6 +217,14 @@ export fn init() void {
     });
     start.x += d.x;
     start.y += d.y;
+    ui_intel8253.initInPlace(.{
+        .title = "intel8253 CTC",
+        .ctc = &sys.ctc,
+        .origin = start,
+        .chip = .{ .name = "i8253\nCTC", .num_slots = 28, .pins = &UI_INTEL8253_Pins },
+    });
+    start.x += d.x;
+    start.y += d.y;
 
     // initialize sokol-imgui
     simgui.setup(.{
@@ -218,6 +253,7 @@ export fn frame() void {
     ui_z80.draw(sys.bus);
     ui_z80pio.draw(sys.bus);
     ui_intel8255.draw(sys.bus);
+    ui_intel8253.draw(sys.bus);
 
     host.gfx.draw(.{
         .display = sys.displayInfo(),
@@ -256,7 +292,7 @@ fn uiDrawMenu() void {
                 ui_intel8255.open = true;
             }
             if (ig.igMenuItem("i8253 CTC")) {
-                // TODO: open chip window
+                ui_intel8253.open = true;
             }
             ig.igEndMenu();
         }
