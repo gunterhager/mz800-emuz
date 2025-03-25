@@ -40,7 +40,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 .title = opts.title,
                 .gdg = opts.gdg,
                 .origin = opts.origin,
-                .size = .{ .x = if (opts.size.x == 0) 440 else opts.size.x, .y = if (opts.size.y == 0) 370 else opts.size.y },
+                .size = .{ .x = if (opts.size.x == 0) 360 else opts.size.x, .y = if (opts.size.y == 0) 400 else opts.size.y },
                 .open = opts.open,
                 .last_open = opts.open,
                 .valid = true,
@@ -155,29 +155,39 @@ pub fn Type(comptime cfg: TypeConfig) type {
             ig.igText("Scroll End Address:   %04X", gdg.sea);
         }
 
-        fn drawBorderColorRegister(self: *Self) void {
-            const gdg = self.gdg;
-            var color: [*c]const u8 = undefined;
-            switch (gdg.bcol) {
-                0b0000 => color = "Black",
-                0b0001 => color = "Blue",
-                0b0010 => color = "Red",
-                0b0011 => color = "Purple",
-                0b0100 => color = "Green",
-                0b0101 => color = "Cyan",
-                0b0110 => color = "Yellow",
-                0b0111 => color = "White",
-                0b1000 => color = "Gray",
-                0b1001 => color = "Light Blue",
-                0b1010 => color = "Light Red",
-                0b1011 => color = "Light Purple",
-                0b1100 => color = "Light Green",
-                0b1101 => color = "Light Cyan",
-                0b1110 => color = "Light Yellow",
-                0b1111 => color = "Light White",
-                else => color = "Illegal",
+        fn colorName(color: u4) [*c]const u8 {
+            var color_name: [*c]const u8 = undefined;
+            switch (color) {
+                0b0000 => color_name = "Black",
+                0b0001 => color_name = "Blue",
+                0b0010 => color_name = "Red",
+                0b0011 => color_name = "Purple",
+                0b0100 => color_name = "Green",
+                0b0101 => color_name = "Cyan",
+                0b0110 => color_name = "Yellow",
+                0b0111 => color_name = "White",
+                0b1000 => color_name = "Gray",
+                0b1001 => color_name = "Light Blue",
+                0b1010 => color_name = "Light Red",
+                0b1011 => color_name = "Light Purple",
+                0b1100 => color_name = "Light Green",
+                0b1101 => color_name = "Light Cyan",
+                0b1110 => color_name = "Light Yellow",
+                0b1111 => color_name = "Light White",
             }
-            ig.igText("Border Color %s", color);
+            return color_name;
+        }
+
+        fn drawBorderColorRegister(self: *Self) void {
+            ig.igText("Border Color: %s", colorName(@truncate(self.gdg.bcol)));
+        }
+
+        fn drawPaletteRegisters(self: *Self) void {
+            const gdg = self.gdg;
+            for (0..4) |index| {
+                ig.igText("PLT%d: %s", index, colorName(gdg.plt[index]));
+            }
+            ig.igText("Palette Switch: %0X", @as(u8, @intCast(gdg.plt_sw)));
         }
 
         fn drawState(self: *Self) void {
@@ -192,6 +202,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
             self.drawScrollRegisters();
             ig.igSeparator();
             self.drawBorderColorRegister();
+            ig.igSeparator();
+            self.drawPaletteRegisters();
         }
 
         pub fn draw(self: *Self) void {
