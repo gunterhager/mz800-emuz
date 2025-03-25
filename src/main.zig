@@ -163,7 +163,8 @@ const UI_INTEL8253_Pins = [_]UI_CHIP.Pin{
     .{ .name = "GATE2", .slot = 25, .mask = mz800.CTC.GATE2 },
     .{ .name = "OUT2", .slot = 26, .mask = mz800.CTC.OUT2 },
 };
-
+const UI_GDG = ui_intern.ui_gdg_whid65040_032.Type(.{ .bus = mz800.Bus, .gdg = mz800.GDG });
+const UI_GDG_Pins = [_]UI_CHIP.Pin{};
 var sys: MZ800 = undefined;
 var gpa = GeneralPurposeAllocator(.{}){};
 
@@ -171,6 +172,7 @@ var ui_z80: UI_Z80 = undefined;
 var ui_z80pio: UI_Z80PIO = undefined;
 var ui_intel8255: UI_INTEL8255 = undefined;
 var ui_intel8253: UI_INTEL8253 = undefined;
+var ui_gdg: UI_GDG = undefined;
 
 export fn init() void {
     std.debug.print("🚨 Booting MZ-800...\n", .{});
@@ -225,6 +227,14 @@ export fn init() void {
     });
     start.x += d.x;
     start.y += d.y;
+    ui_gdg.initInPlace(.{
+        .title = "GDG WHID65040-032",
+        .gdg = &sys.gdg,
+        .origin = start,
+        .chip = .{ .name = "GDG", .num_slots = 28, .pins = &UI_GDG_Pins },
+    });
+    start.x += d.x;
+    start.y += d.y;
 
     // initialize sokol-imgui
     simgui.setup(.{
@@ -254,6 +264,7 @@ export fn frame() void {
     ui_z80pio.draw(sys.bus);
     ui_intel8255.draw(sys.bus);
     ui_intel8253.draw(sys.bus);
+    ui_gdg.draw();
 
     host.gfx.draw(.{
         .display = sys.displayInfo(),
@@ -293,6 +304,9 @@ fn uiDrawMenu() void {
             }
             if (ig.igMenuItem("i8253 CTC")) {
                 ui_intel8253.open = true;
+            }
+            if (ig.igMenuItem("GDG WHID65040-032")) {
+                ui_gdg.open = true;
             }
             ig.igEndMenu();
         }
