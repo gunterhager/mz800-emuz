@@ -73,7 +73,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
         pub const WE = mask(Bus, cfg.pins.WE);
 
         /// Attenuation
-        pub const ATTENUATION = enum(u8) {
+        pub const ATTENUATION = enum(u4) {
             DB0 = 0, // 0db, max output volume
             DB2 = 1, // 2db
             DB4 = 2, // 4db
@@ -93,17 +93,17 @@ pub fn Type(comptime cfg: TypeConfig) type {
         };
 
         pub const Tone = struct {
-            divider: u16,
+            divider: u10,
             divider_latch: u16,
         };
 
         /// Noise feedback
-        pub const NOISE_FB = enum {
+        pub const NOISE_FB = enum(u1) {
             PERIODIC,
             WHITE,
         };
 
-        pub const NOISE_DIVIDER = enum(u8) {
+        pub const NOISE_DIVIDER = enum(u2) {
             TYPE0 = 0, // noise divider 0x10, 6.928 kHz
             TYPE1 = 1, // noise divider 0x20, 3.464 kHz
             TYPE2 = 2, // noise divider 0x40, 1.732 kHz
@@ -111,8 +111,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
         };
 
         pub const Noise = struct {
-            type: NOISE_FB,
-            last_type: NOISE_FB,
+            feedback: NOISE_FB,
+            last_feedback: NOISE_FB,
             divider: NOISE_DIVIDER,
             shift_register: u16,
         };
@@ -127,7 +127,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
             noise: Noise,
 
             pub const defaultTone: Generator = .{ .tone = .{ .divider = 0, .divider_latch = 0 } };
-            pub const defaultNoise: Generator = .{ .noise = .{ .type = .PERIODIC, .last_type = .PERIODIC, .divider = .TYPE0, .shift_register = 0 } };
+            pub const defaultNoise: Generator = .{ .noise = .{ .feedback = .PERIODIC, .last_feedback = .PERIODIC, .divider = .TYPE0, .shift_register = 0 } };
         };
 
         pub const Channel = struct {
@@ -135,6 +135,16 @@ pub fn Type(comptime cfg: TypeConfig) type {
             timer: u16,
             attenuation: ATTENUATION,
             output_signal: u16,
+        };
+
+        pub const DATA = struct {
+            pub const LATCH = mask(u8, 7);
+            pub const CHANNEL = maskm(u8, &[_]comptime_int{ 5, 6 });
+            pub const ATTENUATION = mask(u8, 4);
+            pub const VALUE_LOW = maskm(u8, &[_]comptime_int{ 0, 1, 2, 3 });
+            pub const VALUE_HIGH = maskm(u8, &[_]comptime_int{ 0, 1, 2, 3, 4, 5 });
+            pub const NOISE_FB = mask(u8, 2);
+            pub const NOISE_DIVIDER = maskm(u8, &[_]comptime_int{ 0, 1 });
         };
 
         channel: [4]Channel = .{
@@ -163,6 +173,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 .output_signal = 0,
             },
         },
+        channel_addr_latch: u2 = 0,
 
         /// Get data bus value
         pub inline fn getData(bus: Bus) u8 {
@@ -206,9 +217,54 @@ pub fn Type(comptime cfg: TypeConfig) type {
         /// Write a value to the PSG
         pub fn write(self: *Self, in_bus: Bus) Bus {
             const data = getData(in_bus);
-            _ = self;
-            _ = data;
+            const is_latch = data & DATA.LATCH != 0;
+            if (is_latch) {
+                const channel_addr: u2 = @truncate((data & DATA.CHANNEL) >> 5);
+                const is_attenuation = data & DATA.ATTENUATION != 0;
+                const channel = &self.channel[channel_addr];
+                self.channel_addr_latch = channel_addr;
+                if (is_attenuation) {
+                    const value: u4 = @truncate(data & DATA.VALUE_LOW);
+                    channel.*.attenuation = @enumFromInt(value);
+                } else {
+                    switch (channel.*.generator) {
+                        .tone => |*generator| {
+                            const value: u4 = @truncate(data & DATA.VALUE_LOW);
+                            updateToneLow(generator, value);
+                        },
+                        .noise => |*generator| {
+                            const feedback: NOISE_FB = @enumFromInt(@as(u1, @truncate((data & DATA.NOISE_FB) >> 2)));
+                            const divider: NOISE_DIVIDER = @enumFromInt(@as(u2, @truncate(data & DATA.NOISE_DIVIDER)));
+                            updateNoise(generator, feedback, divider);
+                        },
+                    }
+                }
+            } else {
+                const channel = &self.channel[self.channel_addr_latch];
+                switch (channel.*.generator) {
+                    .tone => |*generator| {
+                        const value: u6 = @truncate(data & DATA.VALUE_HIGH);
+                        updateToneHigh(generator, value);
+                    },
+                    .noise => {},
+                }
+            }
             return in_bus;
+        }
+
+        fn updateToneLow(generator: *Tone, value: u4) void {
+            generator.*.divider = value;
+        }
+
+        fn updateToneHigh(generator: *Tone, value: u6) void {
+            const divider = generator.*.divider;
+            generator.*.divider = divider & @as(u10, DATA.VALUE_LOW) | (@as(u10, value) << 4);
+        }
+
+        fn updateNoise(generator: *Noise, feedback: NOISE_FB, divider: NOISE_DIVIDER) void {
+            generator.*.last_feedback = generator.*.feedback;
+            generator.*.feedback = feedback;
+            generator.*.divider = divider;
         }
     };
 }
