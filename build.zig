@@ -13,7 +13,16 @@ pub fn build(b: *std.Build) void {
     const dep_sokol = b.dependency("sokol", .{
         .target = target,
         .optimize = optimize,
+        .with_sokol_imgui = true,
     });
+
+    const dep_cimgui = b.dependency("cimgui", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // inject the cimgui header search path into the sokol C library compile step
+    dep_sokol.artifact("sokol_clib").addIncludePath(dep_cimgui.path("src"));
 
     const mod_chips = b.addModule("chips", .{
         .root_source_file = b.path("src/chips/chips.zig"),
@@ -34,6 +43,18 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const mod_ui = b.addModule("ui", .{
+        .root_source_file = b.path("src/ui/ui.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+            .{ .name = "cimgui", .module = dep_cimgui.module("cimgui") },
+            .{ .name = "chipz", .module = dep_chipz.module("chipz") },
+            .{ .name = "chips", .module = mod_chips },
+        },
+    });
+
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -41,8 +62,10 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "chipz", .module = dep_chipz.module("chipz") },
             .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+            .{ .name = "cimgui", .module = dep_cimgui.module("cimgui") },
             .{ .name = "chips", .module = mod_chips },
             .{ .name = "system", .module = mod_system },
+            .{ .name = "ui", .module = mod_ui },
         },
     });
 

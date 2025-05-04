@@ -368,8 +368,12 @@ pub fn Type(comptime cfg: TypeConfig) type {
                             else => {},
                         }
                     },
-                    .MODE4, .MODE5 => {
-                        std.debug.panic("CTC MODE4 and MODE5 not implemented", .{});
+                    .MODE4 => {
+                        std.debug.panic("CTC MODE4 not implemented", .{});
+                        return bus;
+                    },
+                    .MODE5 => {
+                        std.debug.panic("CTC MODE5 not implemented", .{});
                         return bus;
                     },
                 }
@@ -435,8 +439,11 @@ pub fn Type(comptime cfg: TypeConfig) type {
                             }
                         }
                     },
-                    .MODE4, .MODE5 => {
-                        std.debug.panic("CTC MODE4 and MODE5 not implemented", .{});
+                    .MODE4 => {
+                        std.debug.panic("CTC MODE4 not implemented", .{});
+                    },
+                    .MODE5 => {
+                        std.debug.panic("CTC MODE5 not implemented", .{});
                     },
                 }
                 return bus;
@@ -467,7 +474,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 self.latch_operation = false;
                 self.read_load_format = read_load_format;
                 const raw_mode = (data >> 1) & 0b111;
-                self.mode = @enumFromInt(if (raw_mode > 5) (raw_mode & 0b11) else raw_mode);
+                self.mode = @enumFromInt(if (raw_mode > 5) (raw_mode & 0b101) else raw_mode);
                 self.bcd = (data & 0b1) == 1;
                 self.state = .init;
                 self.load_done = false;
@@ -534,6 +541,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 var bus = in_bus;
                 const value = self.readValue();
                 var result: u8 = 0;
+
                 switch (self.read_load_format) {
                     .LSB => {
                         self.latch_operation = false;
@@ -626,37 +634,37 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         /// Set CLK of counter to value on the bus
         pub fn setCLK0(self: *Self, bus: Bus) Bus {
-            const value: u1 = @truncate(bus & CLK0);
+            const value: u1 = if ((bus & CLK0) != 0) 1 else 0;
             return self.counter[0].setCLK(value, bus);
         }
 
         /// Set CLK of counter to value on the bus
         pub fn setCLK1(self: *Self, bus: Bus) Bus {
-            const value: u1 = @truncate(bus & CLK1);
+            const value: u1 = if ((bus & CLK1) != 0) 1 else 0;
             return self.counter[1].setCLK(value, bus);
         }
 
         /// Set CLK of counter to value on the bus
         pub fn setCLK2(self: *Self, bus: Bus) Bus {
-            const value: u1 = @truncate(bus & CLK2);
+            const value: u1 = if ((bus & CLK2) != 0) 1 else 0;
             return self.counter[2].setCLK(value, bus);
         }
 
         /// Set GATE of counter to value on the bus
         pub fn setGATE0(self: *Self, bus: Bus) Bus {
-            const value: u1 = @truncate(bus & GATE0);
+            const value: u1 = if ((bus & GATE0) != 0) 1 else 0;
             return self.counter[0].setGATE(value, bus);
         }
 
         /// Set GATE of counter to value on the bus
         pub fn setGATE1(self: *Self, bus: Bus) Bus {
-            const value: u1 = @truncate(bus & GATE1);
+            const value: u1 = if ((bus & GATE1) != 0) 1 else 0;
             return self.counter[1].setGATE(value, bus);
         }
 
         /// Set GATE of counter to value on the bus
         pub fn setGATE2(self: *Self, bus: Bus) Bus {
-            const value: u1 = @truncate(bus & GATE2);
+            const value: u1 = if ((bus & GATE2) != 0) 1 else 0;
             return self.counter[2].setGATE(value, bus);
         }
 

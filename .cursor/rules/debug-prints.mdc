@@ -1,0 +1,59 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: Debug Print Standards
+globs: *.zig
+---
+# Debug Print Standards
+
+<rule>
+name: debug_prints
+description: Standards for debug print statements in the codebase
+
+filters:
+  - type: content
+    pattern: "std\\.debug\\.print"
+
+actions:
+  - type: suggest
+    message: |
+      Debug prints should follow these standards:
+      
+      1. Use the 🚨 emoji for all debug prints
+      2. Format hex values with fixed width and leading zeros:
+         ```zig
+         std.debug.print("🚨 Value: 0x{x:0>2}\n", .{value});
+         ```
+      
+      3. Use consistent message prefixes:
+         - For data: "🚨 Value: ..."
+         - For state: "🚨 State: ..."
+         - For mode: "🚨 Mode: ..."
+         - For format: "🚨 Format: ..."
+      
+      4. For enum values, use @tagName:
+         ```zig
+         std.debug.print("🚨 Mode: {s}\n", .{@tagName(mode)});
+         ```
+      
+      5. Group related debug prints with consistent prefixes:
+         ```zig
+         std.debug.print("🚨 ReadData - Format: {s}\n", .{...});
+         std.debug.print("🚨 ReadData - Value: 0x{x:0>2}\n", .{...});
+         ```
+
+examples:
+  - input: |
+      std.debug.print("Debug: {x}\n", .{value});
+      std.debug.print("Value is {d}\n", .{value});
+    output: |
+      std.debug.print("🚨 Value: 0x{x:0>2}\n", .{value});
+      std.debug.print("🚨 Value: {d}\n", .{value});
+
+metadata:
+  priority: medium
+  version: 1.0
+</rule>

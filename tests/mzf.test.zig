@@ -1,5 +1,6 @@
 const std = @import("std");
 const expect = std.testing.expect;
+const expectEqual = std.testing.expectEqual;
 const tmpDir = std.testing.tmpDir;
 
 const system = @import("system");
@@ -17,6 +18,6 @@ test "load obj file" {
     obj_file.load(tmp.dir, input_file_name) catch |err| {
         std.debug.print("Error loading file '{s}': {}\n", .{ input_file_name, err });
     };
-    try expect(obj_file.header.start_address == 0x2000);
-    try expect(obj_file.header.start_address == 0x2000);
+    try expectEqual(obj_file.header.start_address, 0x2000);
+    try expectEqual(obj_file.header.start_address, 0x2000);
 }

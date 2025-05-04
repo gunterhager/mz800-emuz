@@ -17,6 +17,7 @@ pub fn build(b: *Build, opts: Options) void {
         "gdg_whid65040_032",
         "intel8253",
         "mzf",
+        "mzascii",
         "mz800",
     };
     const test_step = b.step("test", "Run unit tests");

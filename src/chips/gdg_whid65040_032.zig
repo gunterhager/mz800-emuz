@@ -1,6 +1,6 @@
 //!  gdg_whid65040_032.zig
 //!
-//!  Emulator of the GDG WHID 65040-032, a custom chip found in the SHARP MZ-800 computer.
+//!  Emulates the GDG WHID 65040-032, a custom chip found in the SHARP MZ-800 computer.
 //!  It is used mainly as CRT controller.
 //!  The GDG acts as memory controller, too. We don't emulate that here.
 //!

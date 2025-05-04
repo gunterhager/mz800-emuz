@@ -1,0 +1,52 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ ---
+description: Import Statement Preservation Rule
+globs: *
+---
+# Import Statement Preservation
+
+<rule>
+name: preserve_imports
+description: Import statements should not be modified unless explicitly requested
+
+filters:
+  - type: content
+    pattern: "^const .* = @import\\(.*\\);"
+
+actions:
+  - type: suggest
+    message: |
+      DO NOT modify import statements unless explicitly requested by the user.
+      
+      Common mistakes to avoid:
+      1. Changing import paths
+      2. Adding new imports
+      3. Removing existing imports
+      4. Changing import aliases
+      
+      If the user's request requires import changes:
+      1. Ask the user explicitly about modifying imports
+      2. Wait for confirmation before making any changes
+      3. Only make the specific import changes requested
+
+examples:
+  - input: |
+      const std = @import("std");
+      const foo = @import("foo").bar;
+      
+      // Code changes requested...
+    output: |
+      // Keep imports exactly as they were
+      const std = @import("std");
+      const foo = @import("foo").bar;
+      
+      // Make requested code changes...
+
+metadata:
+  priority: high
+  version: 1.0
+</rule>
