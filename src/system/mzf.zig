@@ -2,6 +2,7 @@
 //! Currently only `OBJ`(machine code) files are supported.
 
 const std = @import("std");
+const mzToASCII = @import("mzascii.zig").MZASCII.mzToASCII;
 
 pub fn Type() type {
     return struct {
@@ -25,6 +26,7 @@ pub fn Type() type {
         };
 
         header: Header,
+        display_name: [17]u8, // Name in regular ASCII
         data: [0x100000]u8, // 64K buffer
 
         pub fn load(self: *Self, dir: std.fs.Dir, path: []const u8) !void {
@@ -41,6 +43,14 @@ pub fn Type() type {
             if (len != self.header.file_length) {
                 std.debug.print("🚨 File length mismatch: header file length: {}, found file length: {}\n", .{ self.header.file_length, len });
                 return error.WrongFileLength;
+            }
+            for (self.header.name, 0..) |char, index| {
+                if (char == 0x0d) {
+                    self.display_name[index] = 0;
+                    break;
+                } else {
+                    self.display_name[index] = mzToASCII(char);
+                }
             }
         }
     };

@@ -18,6 +18,7 @@ pub fn build(b: *Build, opts: Options) void {
         "sn76489an",
         "intel8253",
         "mzf",
+        "mzascii",
         "mz800",
     };
     const test_step = b.step("test", "Run unit tests");
