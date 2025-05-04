@@ -5,19 +5,24 @@ const chipz = @import("chipz");
 const clock_dividers = @import("frequencies.zig").clock_dividers;
 const frequencies = @import("frequencies.zig").frequencies;
 const video = @import("video.zig").video;
-const gdg_whid65040_032 = @import("chips").gdg_whid65040_032;
+
 const z80 = chipz.chips.z80;
 const z80pio = chipz.chips.z80pio;
 const intel8255 = chipz.chips.intel8255;
 const intel8253 = @import("chips").intel8253;
+const gdg_whid65040_032 = @import("chips").gdg_whid65040_032;
+const sn76489an = @import("chips").sn76489an;
+
 const common = chipz.common;
 const memory = common.memory;
 const clock = common.clock;
 const keybuf = common.keybuf;
+
 const pins = common.bitutils.pins;
 const mask = common.bitutils.mask;
 const maskm = common.bitutils.maskm;
 const cp = common.utils.cp;
+
 const audio = common.audio;
 const DisplayInfo = common.glue.DisplayInfo;
 const mzf = @import("mzf.zig");
@@ -117,16 +122,24 @@ const GDG_PINS = gdg_whid65040_032.Pins{
     .CS = CS_PINS.GDG,
 };
 
+/// PSG bus definitions
+const PSG_PINS = sn76489an.Pins{
+    .DBUS = CPU_PINS.DBUS,
+    .CE = CS_PINS.PSG,
+    .WE = CPU_PINS.WR,
+};
+
 pub const Bus = u128;
 // Memory is mapped in 1K pages
-const Memory = memory.Type(.{ .page_size = 0x0400 });
-const Z80 = z80.Type(.{ .pins = CPU_PINS, .bus = Bus });
-const Z80PIO = z80pio.Type(.{ .pins = PIO_PINS, .bus = Bus });
-const PPI = intel8255.Type(.{ .pins = PPI_PINS, .bus = Bus });
-const CTC = intel8253.Type(.{ .pins = CTC_PINS, .bus = Bus });
-const GDG = gdg_whid65040_032.Type(.{ .pins = GDG_PINS, .bus = Bus });
-const KeyBuf = keybuf.Type(.{ .num_slots = 4 });
-const Audio = audio.Type(.{ .num_voices = 2 });
+pub const Memory = memory.Type(.{ .page_size = 0x0400 });
+pub const Z80 = z80.Type(.{ .pins = CPU_PINS, .bus = Bus });
+pub const PIO = z80pio.Type(.{ .pins = PIO_PINS, .bus = Bus });
+pub const PPI = intel8255.Type(.{ .pins = PPI_PINS, .bus = Bus });
+pub const CTC = intel8253.Type(.{ .pins = CTC_PINS, .bus = Bus });
+pub const GDG = gdg_whid65040_032.Type(.{ .pins = GDG_PINS, .bus = Bus });
+pub const PSG = sn76489an.Type(.{ .pins = PSG_PINS, .bus = Bus });
+pub const KeyBuf = keybuf.Type(.{ .num_slots = 4 });
+pub const Audio = audio.Type(.{ .num_voices = 2 });
 
 pub const getData = Z80.getData;
 pub const setData = Z80.setData;
@@ -245,7 +258,7 @@ pub fn Type() type {
         gdg: GDG,
 
         // PSG SN 76489 AN, sound generator
-        // TODO: implement PSG
+        psg: PSG,
 
         video: struct {
             ticks: usize = 0,
@@ -291,6 +304,7 @@ pub fn Type() type {
                     .cgrom = &self.rom.cgrom,
                     .rgba8_buffer = &self.fb,
                 }),
+                .psg = PSG.init(),
                 .mem = Memory.init(.{
                     .junk_page = &self.junk_page,
                     .unmapped_page = &self.unmapped_page,
@@ -639,7 +653,7 @@ pub fn Type() type {
                 },
                 // PSG SN 76489 AN, sound generator
                 0xf2 => {
-                    std.debug.panic("PSG not implemented", .{});
+                    bus = self.psg.tick(bus);
                 },
                 // QDC, quick disk controller
                 0xf4...0xf7 => {

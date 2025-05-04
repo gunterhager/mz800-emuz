@@ -15,6 +15,7 @@ pub const Options = struct {
 pub fn build(b: *Build, opts: Options) void {
     const unit_tests = [_][]const u8{
         "gdg_whid65040_032",
+        "sn76489an",
         "intel8253",
         "mzf",
         "mz800",

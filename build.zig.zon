@@ -29,8 +29,12 @@
             .hash = "chipz-0.0.0-gW-vWz07DwA7dPrbiipUMXJNoJM8pjYzl3Hn99LPhMaz",
         },
         .sokol = .{
-            .url = "git+https://github.com/floooh/sokol-zig.git#b8f3e5a8876023e47d614ddc98c13436d1004148",
-            .hash = "sokol-0.1.0-pb1HK3tgNgDugWnzeI4S8PQ1usvj559ADkdFiRyB9cxt",
+            .url = "git+https://github.com/floooh/sokol-zig.git#38c5d4c35b375c8aa4e104c1db8d218b588cf293",
+            .hash = "sokol-0.1.0-pb1HK46pLACblkKEuBJAHV6dapSeaWooJO87AN5tickD",
+        },
+        .cimgui = .{
+            .url = "git+https://github.com/floooh/dcimgui.git#3969c14f7c7abda0e4b59d2616b17b7fb9eb0827",
+            .hash = "cimgui-0.1.0-44ClkTt5hgBU8BelH8W_G8mso3ys_hrqNUWwJvaxXDs5",
         },
     },
     .paths = .{
