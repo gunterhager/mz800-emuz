@@ -247,7 +247,6 @@ pub fn Type() type {
 
         // PIO Z80 PIO, parallel I/O unit
         pio: PIO,
-        pio: PIO,
 
         // PPI i8255, keyboard and cassette driver
         ppi: PPI,
@@ -298,7 +297,6 @@ pub fn Type() type {
             self.* = .{
                 .bus = 0,
                 .cpu = Z80.init(),
-                .pio = PIO.init(),
                 .pio = PIO.init(),
                 .ppi = PPI.init(),
                 .ctc = CTC.init(),
