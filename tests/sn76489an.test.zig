@@ -106,3 +106,22 @@ test "noise" {
     try expectEqual(feedback, sut.channel[addr].generator.noise.feedback);
     try expectEqual(divider, sut.channel[addr].generator.noise.divider);
 }
+
+test "step" {
+    var sut = PSG.init();
+    sut.step();
+    // Expect no output when attenuation is off.
+    for (sut.channel) |channel| {
+        try expectEqual(0, channel.output_signal);
+    }
+    for (&sut.channel) |*channel| {
+        channel.*.attenuation = .DB0;
+    }
+    sut.channel[3].generator.noise.divider = .TYPE3;
+    sut.step();
+    // Expect output 1 for tone channels when attenuation is set but divider < 2.
+    // Also for noise channel if divider is TYPE3.
+    for (sut.channel) |channel| {
+        try expectEqual(1, channel.output_signal);
+    }
+}

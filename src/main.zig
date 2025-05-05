@@ -180,6 +180,10 @@ export fn init() void {
     host.time.init();
     host.prof.init();
     sys.initInPlace(.{ .roms = .{
+        .audio = .{
+            .sample_rate = @intCast(host.audio.sampleRate()),
+            .callback = host.audio.push,
+        },
         .rom1 = @embedFile("system/roms/MZ800_ROM1.bin"),
         .cgrom = @embedFile("system/roms/MZ800_CGROM.bin"),
         .rom2 = @embedFile("system/roms/MZ800_ROM2.bin"),

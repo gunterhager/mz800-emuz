@@ -157,6 +157,7 @@ pub fn Type() type {
 
         /// Runtime options
         pub const Options = struct {
+            audio: Audio.Options,
             roms: struct {
                 rom1: []const u8,
                 cgrom: []const u8,
@@ -282,6 +283,7 @@ pub fn Type() type {
         vram_banked_in: bool = false,
         junk_page: [Memory.PAGE_SIZE]u8,
         unmapped_page: [Memory.PAGE_SIZE]u8,
+        audio: Audio,
         /// Frame buffer for emulator display
         fb: [DISPLAY.FB_SIZE]u32 align(128),
 
@@ -315,6 +317,7 @@ pub fn Type() type {
                 }),
                 .ram = [_]u8{0} ** MEM_CONFIG.MZ800.RAM_SIZE,
                 .rom = initRoms(opts),
+                .audio = Audio.init(opts.audio),
                 .fb = std.mem.zeroes(@TypeOf(self.fb)),
                 .junk_page = std.mem.zeroes(@TypeOf(self.junk_page)),
                 .unmapped_page = [_]u8{0xFF} ** Memory.PAGE_SIZE,

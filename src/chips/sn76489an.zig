@@ -132,9 +132,9 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         pub const Channel = struct {
             generator: Generator,
-            timer: u16,
+            counter: u16,
             attenuation: ATTENUATION,
-            output_signal: u16,
+            output_signal: u1,
         };
 
         pub const DATA = struct {
@@ -150,25 +150,25 @@ pub fn Type(comptime cfg: TypeConfig) type {
         channel: [4]Channel = .{
             .{
                 .generator = .defaultTone,
-                .timer = 0,
+                .counter = 0,
                 .attenuation = .OFF,
                 .output_signal = 0,
             },
             .{
                 .generator = .defaultTone,
-                .timer = 0,
+                .counter = 0,
                 .attenuation = .OFF,
                 .output_signal = 0,
             },
             .{
                 .generator = .defaultTone,
-                .timer = 0,
+                .counter = 0,
                 .attenuation = .OFF,
                 .output_signal = 0,
             },
             .{
                 .generator = .defaultNoise,
-                .timer = 0,
+                .counter = 0,
                 .attenuation = .OFF,
                 .output_signal = 0,
             },
@@ -194,8 +194,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         /// Reset PSG instance
         pub fn reset(self: *Self) void {
-            for (self.channel[0..3]) |*channel| {
-                channel.*.timer = 0;
+            for (&self.channel) |*channel| {
+                channel.*.counter = 0;
                 channel.*.attenuation = .OFF;
                 channel.*.output_signal = 0;
                 switch (channel.generator) {
@@ -265,6 +265,57 @@ pub fn Type(comptime cfg: TypeConfig) type {
             generator.*.last_feedback = generator.*.feedback;
             generator.*.feedback = feedback;
             generator.*.divider = divider;
+        }
+
+        pub fn step(self: *Self) void {
+            for (&self.channel) |*channel| {
+                if (channel.*.attenuation == .OFF) break;
+                switch (channel.*.generator) {
+                    .tone => |generator| {
+                        if (generator.divider < 2) {
+                            channel.*.output_signal = 1;
+                        } else {
+                            channel.*.counter -= 1;
+                            if (channel.*.counter == 0) {
+                                channel.*.counter = generator.divider - 1;
+                                channel.*.output_signal ^= 1;
+                            }
+                        }
+                    },
+                    .noise => |*generator| {
+                        if ((generator.*.divider == .TYPE3) and (self.channel[2].generator.tone.divider < 2)) {
+                            channel.*.output_signal = 1;
+                        } else {
+                            channel.*.counter -= 1;
+                            if (channel.*.counter == 0) {
+                                if (generator.*.divider == .TYPE3) {
+                                    channel.*.counter = self.channel[2].generator.tone.divider - 1;
+                                } else {
+                                    channel.*.counter = (@as(u16, 0x10) << @intFromEnum(generator.*.divider)) - 1;
+                                }
+                                if (generator.*.last_feedback != generator.*.feedback) {
+                                    generator.*.last_feedback = generator.*.feedback;
+                                    generator.*.shift_register = 1 << 15;
+                                } else {
+                                    const bit0 = (generator.*.shift_register & 0x0001);
+                                    switch (generator.*.feedback) {
+                                        .PERIODIC => {
+                                            generator.*.shift_register >>= 1;
+                                            generator.*.shift_register |= (bit0 << 15);
+                                        },
+                                        .WHITE => {
+                                            const bit3 = ((generator.*.shift_register >> 3) & 0x0001);
+                                            generator.*.shift_register >>= 1;
+                                            generator.*.shift_register |= ((bit0 ^ bit3) << 15);
+                                        },
+                                    }
+                                }
+                                channel.*.output_signal = @truncate(generator.*.shift_register & 0x0001);
+                            }
+                        }
+                    },
+                }
+            }
         }
     };
 }
