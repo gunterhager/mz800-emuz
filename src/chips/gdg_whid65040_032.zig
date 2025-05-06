@@ -468,16 +468,16 @@ pub fn Type(comptime cfg: TypeConfig) type {
             }
         }
 
-        pub fn isHires(self: *Self) bool {
+        pub inline fn isHires(self: *Self) bool {
             return (self.dmd & DMD_MODE.HIRES) != 0;
         }
 
-        pub fn isHicolor(self: *Self) bool {
+        pub inline fn isHicolor(self: *Self) bool {
             return (self.dmd & DMD_MODE.HICOLOR) != 0;
         }
 
         /// Translate address bus to VRAM addresses in hires mode.
-        fn hires_vram_addr(addr: u16) u16 {
+        inline fn hires_vram_addr(addr: u16) u16 {
             // In hires VRAM addresses are spread over two planes.
             // Even addresses goto lower and odd to higher planes.
             // Therefore we shift down the address and add the correct
@@ -486,7 +486,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
         }
 
         /// Plane data helper
-        fn p_data(selected: bool, data: u8) u8 {
+        inline fn p_data(selected: bool, data: u8) u8 {
             return (if (selected) data else ~data);
         }
 
