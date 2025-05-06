@@ -357,17 +357,21 @@ pub fn Type() type {
                 }
                 // CTC CLK0 tick, CTC counters count only falling edge so we need to
                 // toggle the signal at clock divider / 2
-                if ((self.clock.ticks % (clock_dividers.CKMS / 2)) == 0) {
+                if ((self.clock.ticks % clock_dividers.CKMS) == (clock_dividers.CKMS / 2)) {
                     // Toggle CLK0
-                    bus = (bus & ~CTC_CLK0) | (~bus & CTC_CLK0);
+                    bus ^= CTC_CLK0;
                     bus = self.ctc.setCLK0(bus);
                 }
                 // CTC CLK1 tick, CTC counters count only falling edge so we need to
                 // toggle the signal at clock divider / 2
-                if ((self.clock.ticks % (clock_dividers.HSYN / 2)) == 0) {
+                if ((self.clock.ticks % clock_dividers.HSYN) == (clock_dividers.HSYN / 2)) {
                     // Toggle CLK1
-                    bus = (bus & ~CTC_CLK1) | (~bus & CTC_CLK1);
+                    bus ^= CTC_CLK1;
                     bus = self.ctc.setCLK1(bus);
+                }
+                // PSG tick
+                if ((self.clock.ticks % clock_dividers.PSG_CLK) == 0) {
+                    bus = self.psg.tick(bus);
                 }
                 // Video tick
                 bus = self.videoTick(bus);
@@ -382,6 +386,9 @@ pub fn Type() type {
 
             // Tick CPU
             bus = self.cpu.tick(bus);
+
+            // Clear chip enable and NMI
+            bus &= ~(PIO.CE | PPI.CS | CTC.CS | PSG.CE);
 
             // Memory request
             if ((bus & MREQ) != 0) {
@@ -426,6 +433,12 @@ pub fn Type() type {
             else if (((bus & Z80.IORQ) != 0) and (bus & (RD | WR)) != 0) {
                 bus = self.iorq(bus);
             }
+
+            // Tick chips (only those that tick with CPU clock)
+            bus = self.gdg.tick(bus);
+            bus = self.pio.tick(bus);
+            bus = self.ppi.tick(bus);
+            bus = self.ctc.tick(bus);
 
             return bus;
         }
@@ -544,6 +557,7 @@ pub fn Type() type {
             return y * DISPLAY.FB_WIDTH + x;
         }
 
+        /// Load an MZF file into memory, resets CPU and starts the loaded start address.
         pub fn load(self: *Self, obj_file: MZF) void {
             self.reset(false);
             const start = obj_file.header.start_address;
@@ -557,7 +571,7 @@ pub fn Type() type {
             self.cpu.prefetch(start);
         }
 
-        fn isInRange(number: u16, lower_bound: u16, upper_bound: u16) bool {
+        inline fn isInRange(number: u16, lower_bound: u16, upper_bound: u16) bool {
             return (number >= lower_bound) and (number <= upper_bound);
         }
 
@@ -612,6 +626,7 @@ pub fn Type() type {
             return self.iorq(bus);
         }
 
+        /// Translate IO addresses into chip select bits on the bus
         fn iorq(self: *Self, in_bus: Bus) Bus {
             var bus = in_bus;
 
@@ -620,52 +635,31 @@ pub fn Type() type {
 
             switch (addr) {
                 // Serial IO
-                0xb0...0xb3 => {
-                    std.debug.panic("Serial IO not implemented", .{});
-                },
+                0xb0...0xb3 => std.debug.panic("Serial IO not implemented", .{}),
                 // GDG WHID 65040-032, CRT controller
-                0xcc...0xcf => {
-                    bus = self.gdg.tick(bus);
-                },
+                0xcc...0xcf => {},
                 // PPI i8255, keyboard and cassette driver
-                0xd0...0xd3 => {
-                    bus = self.ppi.tick(bus);
-                },
+                0xd0...0xd3 => bus |= PPI.CS,
                 // CTC i8253, programmable counter/timer
-                0xd4...0xd7 => {
-                    bus = self.ctc.tick(bus);
-                },
+                0xd4...0xd7 => bus |= CTC.CS,
                 // FDC, floppy disc controller
-                0xd8...0xdf => {
-                    std.debug.panic("FDC not implemented", .{});
-                },
+                0xd8...0xdf => std.debug.panic("FDC not implemented", .{}),
                 // GDG WHID 65040-032, memory bank switch
-                0xe0...0xe6 => {
-                    self.updateMemoryMap(bus);
-                },
-
+                0xe0...0xe6 => self.updateMemoryMap(bus),
                 0xf0...0xf1 => {
                     // GDG WHID 65040-032, Palette register (write only)
-                    if ((addr == 0xf0) and ((bus & WR) != 0)) {
-                        bus = self.gdg.tick(bus);
-                    }
+                    if ((addr == 0xf0) and ((bus & WR) != 0)) {}
                     // Joystick (read only)
                     else if ((bus & RD) != 0) {
-                        bus = self.ppi.tick(bus);
+                        bus |= PPI.CS;
                     }
                 },
                 // PSG SN 76489 AN, sound generator
-                0xf2 => {
-                    bus = self.psg.tick(bus);
-                },
+                0xf2 => bus |= PSG.CE,
                 // QDC, quick disk controller
-                0xf4...0xf7 => {
-                    std.debug.panic("QDC not implemented", .{});
-                },
+                0xf4...0xf7 => std.debug.panic("QDC not implemented", .{}),
                 // PIO Z80 PIO, parallel I/O unit
-                0xfc...0xff => {
-                    bus = self.pio.tick(bus);
-                },
+                0xfc...0xff => bus |= PIO.CE,
                 else => {},
             }
 

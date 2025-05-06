@@ -3,6 +3,12 @@ pub const clock_dividers = struct {
     pub const CKMS: comptime_int = 16;
     pub const HSYN: comptime_int = 1136;
     pub const VSYN: comptime_int = 312;
+
+    // PSG divides the CPU clock by 16 internally before using it.
+    pub const PSG_CLK: comptime_int = CPU_CLK * 16;
+
+    pub const CURSOR: comptime_int = @intFromFloat(frequencies.CLK0 / frequencies.CURSOR);
+    pub const TEMPO: comptime_int = @intFromFloat(frequencies.CLK0 / frequencies.TEMPO);
 };
 
 /// Various frequencies used in the MZ-800.
