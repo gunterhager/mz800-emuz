@@ -484,7 +484,7 @@ pub fn Type() type {
                         self.gdg.status |= GDG.STATUS_MODE.HBLANK;
                     }
                     // Start of VBLANK
-                    if (x == 790 and y == video.border.top + video.canvas.height) {
+                    if (x == 790 and y == (video.border.top + video.canvas.height - 1)) {
                         self.gdg.status &= ~GDG.STATUS_MODE.VBLANK;
                     }
                     // End of VBLANK
@@ -492,7 +492,7 @@ pub fn Type() type {
                         self.gdg.status |= GDG.STATUS_MODE.VBLANK;
                     }
                     // Start of VSYNC
-                    if (x == 792 and y == video.border.top + video.canvas.height + video.border.bottom) {
+                    if (x == 792 and y == (video.border.top + video.canvas.height + video.border.bottom - 1)) {
                         self.gdg.status &= ~GDG.STATUS_MODE.VSYNC;
                     }
                     // End of VSYNC

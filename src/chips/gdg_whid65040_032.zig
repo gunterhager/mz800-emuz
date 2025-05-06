@@ -1,8 +1,12 @@
-//!  gdg_whid65040_032.zig
+//! gdg_whid65040_032.zig
 //!
-//!  Emulates the GDG WHID 65040-032, a custom chip found in the SHARP MZ-800 computer.
-//!  It is used mainly as CRT controller.
-//!  The GDG acts as memory controller, too. We don't emulate that here.
+//! Emulates the GDG WHID 65040-032, a custom chip found in the SHARP MZ-800 computer.
+//! It is used mainly as CRT controller.
+//! The GDG acts as memory controller, too. We don't emulate that here.
+//!
+//! NOTE: The GDG is very tightly integrated into the MZ-800 system and therefore
+//! concerns aren't well separated between the GDG code and the MZ-800 code.
+//! This applies especially to all things video related.
 //!
 const std = @import("std");
 const chipz = @import("chipz");
