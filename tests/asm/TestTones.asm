@@ -1,8 +1,5 @@
 ; Test playing tones on the sound generator
 ;
-; Use z80asm from the z88dk project to build binary file.
-; Command line:
-; z80asm -b TestTones.asm
 
 include "MZ800.inc"
 

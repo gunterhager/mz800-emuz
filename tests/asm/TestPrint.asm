@@ -2,9 +2,6 @@
 ; Output a character via Monitor routine.
 ; This works only if called via G command from monitor.
 ;
-; Use z80asm from the z88dk project to build binary file.
-; Command line:
-; z88dk-z80asm -b TestScroll.asm
 
 include "MZ800.inc"
 include "MZ800ROMMonitor.inc"
