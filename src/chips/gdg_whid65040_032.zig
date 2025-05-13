@@ -1,8 +1,12 @@
-//!  gdg_whid65040_032.zig
+//! gdg_whid65040_032.zig
 //!
-//!  Emulates the GDG WHID 65040-032, a custom chip found in the SHARP MZ-800 computer.
-//!  It is used mainly as CRT controller.
-//!  The GDG acts as memory controller, too. We don't emulate that here.
+//! Emulates the GDG WHID 65040-032, a custom chip found in the SHARP MZ-800 computer.
+//! It is used mainly as CRT controller.
+//! The GDG acts as memory controller, too. We don't emulate that here.
+//!
+//! NOTE: The GDG is very tightly integrated into the MZ-800 system and therefore
+//! concerns aren't well separated between the GDG code and the MZ-800 code.
+//! This applies especially to all things video related.
 //!
 const std = @import("std");
 const chipz = @import("chipz");
@@ -464,16 +468,16 @@ pub fn Type(comptime cfg: TypeConfig) type {
             }
         }
 
-        pub fn isHires(self: *Self) bool {
+        pub inline fn isHires(self: *Self) bool {
             return (self.dmd & DMD_MODE.HIRES) != 0;
         }
 
-        pub fn isHicolor(self: *Self) bool {
+        pub inline fn isHicolor(self: *Self) bool {
             return (self.dmd & DMD_MODE.HICOLOR) != 0;
         }
 
         /// Translate address bus to VRAM addresses in hires mode.
-        fn hires_vram_addr(addr: u16) u16 {
+        inline fn hires_vram_addr(addr: u16) u16 {
             // In hires VRAM addresses are spread over two planes.
             // Even addresses goto lower and odd to higher planes.
             // Therefore we shift down the address and add the correct
@@ -482,7 +486,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
         }
 
         /// Plane data helper
-        fn p_data(selected: bool, data: u8) u8 {
+        inline fn p_data(selected: bool, data: u8) u8 {
             return (if (selected) data else ~data);
         }
 

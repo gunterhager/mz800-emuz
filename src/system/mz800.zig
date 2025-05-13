@@ -5,19 +5,24 @@ const chipz = @import("chipz");
 const clock_dividers = @import("frequencies.zig").clock_dividers;
 const frequencies = @import("frequencies.zig").frequencies;
 const video = @import("video.zig").video;
-const gdg_whid65040_032 = @import("chips").gdg_whid65040_032;
+
 const z80 = chipz.chips.z80;
 const z80pio = chipz.chips.z80pio;
 const intel8255 = chipz.chips.intel8255;
 const intel8253 = @import("chips").intel8253;
+const gdg_whid65040_032 = @import("chips").gdg_whid65040_032;
+const sn76489an = @import("chips").sn76489an;
+
 const common = chipz.common;
 const memory = common.memory;
 const clock = common.clock;
 const keybuf = common.keybuf;
+
 const pins = common.bitutils.pins;
 const mask = common.bitutils.mask;
 const maskm = common.bitutils.maskm;
 const cp = common.utils.cp;
+
 const audio = common.audio;
 const DisplayInfo = common.glue.DisplayInfo;
 const mzf = @import("mzf.zig");
@@ -117,6 +122,13 @@ const GDG_PINS = gdg_whid65040_032.Pins{
     .CS = CS_PINS.GDG,
 };
 
+/// PSG bus definitions
+const PSG_PINS = sn76489an.Pins{
+    .DBUS = CPU_PINS.DBUS,
+    .CE = CS_PINS.PSG,
+    .WE = CPU_PINS.WR,
+};
+
 pub const Bus = u128;
 // Memory is mapped in 1K pages
 pub const Memory = memory.Type(.{ .page_size = 0x0400 });
@@ -125,6 +137,7 @@ pub const PIO = z80pio.Type(.{ .pins = PIO_PINS, .bus = Bus });
 pub const PPI = intel8255.Type(.{ .pins = PPI_PINS, .bus = Bus });
 pub const CTC = intel8253.Type(.{ .pins = CTC_PINS, .bus = Bus });
 pub const GDG = gdg_whid65040_032.Type(.{ .pins = GDG_PINS, .bus = Bus });
+pub const PSG = sn76489an.Type(.{ .pins = PSG_PINS, .bus = Bus });
 pub const KeyBuf = keybuf.Type(.{ .num_slots = 4 });
 pub const Audio = audio.Type(.{ .num_voices = 2 });
 
@@ -144,6 +157,7 @@ pub fn Type() type {
 
         /// Runtime options
         pub const Options = struct {
+            audio: Audio.Options,
             roms: struct {
                 rom1: []const u8,
                 cgrom: []const u8,
@@ -245,7 +259,7 @@ pub fn Type() type {
         gdg: GDG,
 
         // PSG SN 76489 AN, sound generator
-        // TODO: implement PSG
+        psg: PSG,
 
         video: struct {
             ticks: usize = 0,
@@ -269,6 +283,7 @@ pub fn Type() type {
         vram_banked_in: bool = false,
         junk_page: [Memory.PAGE_SIZE]u8,
         unmapped_page: [Memory.PAGE_SIZE]u8,
+        audio: Audio,
         /// Frame buffer for emulator display
         fb: [DISPLAY.FB_SIZE]u32 align(128),
 
@@ -291,6 +306,7 @@ pub fn Type() type {
                     .cgrom = &self.rom.cgrom,
                     .rgba8_buffer = &self.fb,
                 }),
+                .psg = PSG.init(),
                 .mem = Memory.init(.{
                     .junk_page = &self.junk_page,
                     .unmapped_page = &self.unmapped_page,
@@ -301,6 +317,7 @@ pub fn Type() type {
                 }),
                 .ram = [_]u8{0} ** MEM_CONFIG.MZ800.RAM_SIZE,
                 .rom = initRoms(opts),
+                .audio = Audio.init(opts.audio),
                 .fb = std.mem.zeroes(@TypeOf(self.fb)),
                 .junk_page = std.mem.zeroes(@TypeOf(self.junk_page)),
                 .unmapped_page = [_]u8{0xFF} ** Memory.PAGE_SIZE,
@@ -340,17 +357,21 @@ pub fn Type() type {
                 }
                 // CTC CLK0 tick, CTC counters count only falling edge so we need to
                 // toggle the signal at clock divider / 2
-                if ((self.clock.ticks % (clock_dividers.CKMS / 2)) == 0) {
+                if ((self.clock.ticks % clock_dividers.CKMS) == (clock_dividers.CKMS / 2)) {
                     // Toggle CLK0
-                    bus = (bus & ~CTC_CLK0) | (~bus & CTC_CLK0);
+                    bus ^= CTC_CLK0;
                     bus = self.ctc.setCLK0(bus);
                 }
                 // CTC CLK1 tick, CTC counters count only falling edge so we need to
                 // toggle the signal at clock divider / 2
-                if ((self.clock.ticks % (clock_dividers.HSYN / 2)) == 0) {
+                if ((self.clock.ticks % clock_dividers.HSYN) == (clock_dividers.HSYN / 2)) {
                     // Toggle CLK1
-                    bus = (bus & ~CTC_CLK1) | (~bus & CTC_CLK1);
+                    bus ^= CTC_CLK1;
                     bus = self.ctc.setCLK1(bus);
+                }
+                // PSG tick
+                if ((self.clock.ticks % clock_dividers.PSG_CLK) == 0) {
+                    bus = self.psg.tick(bus);
                 }
                 // Video tick
                 bus = self.videoTick(bus);
@@ -365,6 +386,9 @@ pub fn Type() type {
 
             // Tick CPU
             bus = self.cpu.tick(bus);
+
+            // Clear chip enable and NMI
+            bus &= ~(PIO.CE | PPI.CS | CTC.CS | PSG.CE);
 
             // Memory request
             if ((bus & MREQ) != 0) {
@@ -410,6 +434,12 @@ pub fn Type() type {
                 bus = self.iorq(bus);
             }
 
+            // Tick chips (only those that tick with CPU clock)
+            bus = self.gdg.tick(bus);
+            bus = self.pio.tick(bus);
+            bus = self.ppi.tick(bus);
+            bus = self.ctc.tick(bus);
+
             return bus;
         }
 
@@ -454,7 +484,7 @@ pub fn Type() type {
                         self.gdg.status |= GDG.STATUS_MODE.HBLANK;
                     }
                     // Start of VBLANK
-                    if (x == 790 and y == video.border.top + video.canvas.height) {
+                    if (x == 790 and y == (video.border.top + video.canvas.height - 1)) {
                         self.gdg.status &= ~GDG.STATUS_MODE.VBLANK;
                     }
                     // End of VBLANK
@@ -462,7 +492,7 @@ pub fn Type() type {
                         self.gdg.status |= GDG.STATUS_MODE.VBLANK;
                     }
                     // Start of VSYNC
-                    if (x == 792 and y == video.border.top + video.canvas.height + video.border.bottom) {
+                    if (x == 792 and y == (video.border.top + video.canvas.height + video.border.bottom - 1)) {
                         self.gdg.status &= ~GDG.STATUS_MODE.VSYNC;
                     }
                     // End of VSYNC
@@ -527,6 +557,7 @@ pub fn Type() type {
             return y * DISPLAY.FB_WIDTH + x;
         }
 
+        /// Load an MZF file into memory, resets CPU and starts the loaded start address.
         pub fn load(self: *Self, obj_file: MZF) void {
             self.reset(false);
             const start = obj_file.header.start_address;
@@ -540,7 +571,7 @@ pub fn Type() type {
             self.cpu.prefetch(start);
         }
 
-        fn isInRange(number: u16, lower_bound: u16, upper_bound: u16) bool {
+        inline fn isInRange(number: u16, lower_bound: u16, upper_bound: u16) bool {
             return (number >= lower_bound) and (number <= upper_bound);
         }
 
@@ -595,6 +626,7 @@ pub fn Type() type {
             return self.iorq(bus);
         }
 
+        /// Translate IO addresses into chip select bits on the bus
         fn iorq(self: *Self, in_bus: Bus) Bus {
             var bus = in_bus;
 
@@ -603,52 +635,31 @@ pub fn Type() type {
 
             switch (addr) {
                 // Serial IO
-                0xb0...0xb3 => {
-                    std.debug.panic("Serial IO not implemented", .{});
-                },
+                0xb0...0xb3 => std.debug.panic("Serial IO not implemented", .{}),
                 // GDG WHID 65040-032, CRT controller
-                0xcc...0xcf => {
-                    bus = self.gdg.tick(bus);
-                },
+                0xcc...0xcf => {},
                 // PPI i8255, keyboard and cassette driver
-                0xd0...0xd3 => {
-                    bus = self.ppi.tick(bus);
-                },
+                0xd0...0xd3 => bus |= PPI.CS,
                 // CTC i8253, programmable counter/timer
-                0xd4...0xd7 => {
-                    bus = self.ctc.tick(bus);
-                },
+                0xd4...0xd7 => bus |= CTC.CS,
                 // FDC, floppy disc controller
-                0xd8...0xdf => {
-                    std.debug.panic("FDC not implemented", .{});
-                },
+                0xd8...0xdf => std.debug.panic("FDC not implemented", .{}),
                 // GDG WHID 65040-032, memory bank switch
-                0xe0...0xe6 => {
-                    self.updateMemoryMap(bus);
-                },
-
+                0xe0...0xe6 => self.updateMemoryMap(bus),
                 0xf0...0xf1 => {
                     // GDG WHID 65040-032, Palette register (write only)
-                    if ((addr == 0xf0) and ((bus & WR) != 0)) {
-                        bus = self.gdg.tick(bus);
-                    }
+                    if ((addr == 0xf0) and ((bus & WR) != 0)) {}
                     // Joystick (read only)
                     else if ((bus & RD) != 0) {
-                        bus = self.ppi.tick(bus);
+                        bus |= PPI.CS;
                     }
                 },
                 // PSG SN 76489 AN, sound generator
-                0xf2 => {
-                    std.debug.panic("PSG not implemented", .{});
-                },
+                0xf2 => bus |= PSG.CE,
                 // QDC, quick disk controller
-                0xf4...0xf7 => {
-                    std.debug.panic("QDC not implemented", .{});
-                },
+                0xf4...0xf7 => std.debug.panic("QDC not implemented", .{}),
                 // PIO Z80 PIO, parallel I/O unit
-                0xfc...0xff => {
-                    bus = self.pio.tick(bus);
-                },
+                0xfc...0xff => bus |= PIO.CE,
                 else => {},
             }
 

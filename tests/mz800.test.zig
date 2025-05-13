@@ -16,11 +16,17 @@ fn mz800Options() MZ800.Options {
     const rom1 = [_]u8{content.rom1} ** MEM_CONFIG.ROM1_SIZE;
     const cgrom = [_]u8{content.cgrom} ** MEM_CONFIG.CGROM_SIZE;
     const rom2 = [_]u8{content.rom2} ** MEM_CONFIG.ROM2_SIZE;
-    return MZ800.Options{ .roms = .{
-        .rom1 = &rom1,
-        .cgrom = &cgrom,
-        .rom2 = &rom2,
-    } };
+    return MZ800.Options{
+        .audio = .{
+            .sample_rate = 1000,
+            .callback = null,
+        },
+        .roms = .{
+            .rom1 = &rom1,
+            .cgrom = &cgrom,
+            .rom2 = &rom2,
+        },
+    };
 }
 
 fn checkMem(sut: MZ800, start: u16, size: u17, even: u8, odd: u8) bool {

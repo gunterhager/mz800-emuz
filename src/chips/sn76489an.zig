@@ -37,20 +37,14 @@ const maskm = bitutils.maskm;
 pub const Pins = struct {
     CE: comptime_int, // chip enable
     WE: comptime_int, // write enable
-    READY: comptime_int, // ready
-    CLOCK: comptime_int, // input clock, used to generate frequencies
     DBUS: [8]comptime_int, // data bus
-    AUDIOOUT: comptime_int,
 };
 
 /// default pin configuration (mainly useful for debugging)
 pub const DefaultPins = Pins{
     .CE = 40,
     .WE = 28, // Write to PSG, shared with Z80 WR
-    .READY = 41,
-    .CLOCK = 42,
     .DBUS = .{ 16, 17, 18, 19, 20, 21, 22, 23 }, // Shared with Z80 data bus
-    .AUDIOOUT = 50,
 };
 
 /// comptime type configuration for PSG
@@ -77,51 +71,48 @@ pub fn Type(comptime cfg: TypeConfig) type {
         pub const D7 = mask(Bus, cfg.pins.D[7]);
         pub const CE = mask(Bus, cfg.pins.CE);
         pub const WE = mask(Bus, cfg.pins.WE);
-        pub const READY = mask(Bus, cfg.pins.READY);
-        pub const CLOCK = mask(Bus, cfg.pins.CLOCK);
-        pub const AUDIOOUT = mask(Bus, cfg.pins.AUDIOOUT);
 
         /// Attenuation
-        pub const ATTENUATION = struct {
-            pub const DB0: u8 = 0; // 0db, max output volume
-            pub const DB2: u8 = 1; // 2db
-            pub const DB4: u8 = 2; // 4db
-            pub const DB6: u8 = 3; // 6db
-            pub const DB8: u8 = 4; // 8db
-            pub const DB10: u8 = 5; // 10db
-            pub const DB12: u8 = 6; // 12db
-            pub const DB14: u8 = 7; // 14db
-            pub const DB16: u8 = 8; // 16db
-            pub const DB18: u8 = 9; // 18db
-            pub const DB20: u8 = 10; // 20db
-            pub const DB22: u8 = 11; // 22db
-            pub const DB24: u8 = 12; // 24db
-            pub const DB26: u8 = 13; // 26db
-            pub const DB28: u8 = 14; // 28db
-            pub const OFF: u8 = 15; // off, no output
+        pub const ATTENUATION = enum(u4) {
+            DB0 = 0, // 0db, max output volume
+            DB2 = 1, // 2db
+            DB4 = 2, // 4db
+            DB6 = 3, // 6db
+            DB8 = 4, // 8db
+            DB10 = 5, // 10db
+            DB12 = 6, // 12db
+            DB14 = 7, // 14db
+            DB16 = 8, // 16db
+            DB18 = 9, // 18db
+            DB20 = 10, // 20db
+            DB22 = 11, // 22db
+            DB24 = 12, // 24db
+            DB26 = 13, // 26db
+            DB28 = 14, // 28db
+            OFF = 15, // off, no output
         };
 
         pub const Tone = struct {
-            divider: u16,
+            divider: u10,
             divider_latch: u16,
         };
 
         /// Noise feedback
-        pub const NOISE_FB = struct {
-            pub const PERIODIC: u8 = 0;
-            pub const WHITE: u8 = 1;
+        pub const NOISE_FB = enum(u1) {
+            PERIODIC,
+            WHITE,
         };
 
-        pub const NOISE_DIVIDER = struct {
-            pub const TYPE0: u8 = 0; // noise divider 0x10, 6.928 kHz
-            pub const TYPE1: u8 = 1; // noise divider 0x20, 3.464 kHz
-            pub const TYPE2: u8 = 2; // noise divider 0x40, 1.732 kHz
-            pub const TYPE3: u8 = 3; // set noise divider according to channel 2
+        pub const NOISE_DIVIDER = enum(u2) {
+            TYPE0 = 0, // noise divider 0x10, 6.928 kHz
+            TYPE1 = 1, // noise divider 0x20, 3.464 kHz
+            TYPE2 = 2, // noise divider 0x40, 1.732 kHz
+            TYPE3 = 3, // set noise divider according to channel 2
         };
 
         pub const Noise = struct {
-            type: NOISE_FB,
-            last_type: NOISE_FB,
+            feedback: NOISE_FB,
+            last_feedback: NOISE_FB,
             divider: NOISE_DIVIDER,
             shift_register: u16,
         };
@@ -131,50 +122,58 @@ pub fn Type(comptime cfg: TypeConfig) type {
             noise, // noise generator
         };
 
-        pub const Generator = union {
+        pub const Generator = union(ChannelType) {
             tone: Tone,
             noise: Noise,
+
+            pub const defaultTone: Generator = .{ .tone = .{ .divider = 0, .divider_latch = 0 } };
+            pub const defaultNoise: Generator = .{ .noise = .{ .feedback = .PERIODIC, .last_feedback = .PERIODIC, .divider = .TYPE0, .shift_register = 0 } };
         };
 
         pub const Channel = struct {
-            channel_type: ChannelType,
             generator: Generator,
-            timer: u16,
+            counter: u16,
             attenuation: ATTENUATION,
-            output_signal: u16,
+            output_signal: u1,
         };
 
-        counter: []Channel = .{
+        pub const DATA = struct {
+            pub const LATCH = mask(u8, 7);
+            pub const CHANNEL = maskm(u8, &[_]comptime_int{ 5, 6 });
+            pub const ATTENUATION = mask(u8, 4);
+            pub const VALUE_LOW = maskm(u8, &[_]comptime_int{ 0, 1, 2, 3 });
+            pub const VALUE_HIGH = maskm(u8, &[_]comptime_int{ 0, 1, 2, 3, 4, 5 });
+            pub const NOISE_FB = mask(u8, 2);
+            pub const NOISE_DIVIDER = maskm(u8, &[_]comptime_int{ 0, 1 });
+        };
+
+        channel: [4]Channel = .{
             .{
-                .channel_type = .tone,
-                .generator = .{ .tone = .{ .divider = 0, .divider_latch = 0 } },
-                .timer = 0,
+                .generator = .defaultTone,
+                .counter = 0,
                 .attenuation = .OFF,
                 .output_signal = 0,
             },
             .{
-                .channel_type = .tone,
-                .generator = .{ .tone = .{ .divider = 0, .divider_latch = 0 } },
-                .timer = 0,
+                .generator = .defaultTone,
+                .counter = 0,
                 .attenuation = .OFF,
                 .output_signal = 0,
             },
             .{
-                .channel_type = .tone,
-                .generator = .{ .tone = .{ .divider = 0, .divider_latch = 0 } },
-                .timer = 0,
+                .generator = .defaultTone,
+                .counter = 0,
                 .attenuation = .OFF,
                 .output_signal = 0,
             },
             .{
-                .channel_type = .noise,
-                .generator = .{ .noise = .{ .type = .PERIODIC, .last_type = .PERIODIC, .divider = .TYPE0, .shift_register = 0 } },
-                .timer = 0,
+                .generator = .defaultNoise,
+                .counter = 0,
                 .attenuation = .OFF,
                 .output_signal = 0,
             },
         },
-        reset_active: bool = false,
+        channel_addr_latch: u2 = 0,
 
         /// Get data bus value
         pub inline fn getData(bus: Bus) u8 {
@@ -195,16 +194,22 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         /// Reset PSG instance
         pub fn reset(self: *Self) void {
-            self.reset_active = true;
+            for (&self.channel) |*channel| {
+                channel.*.counter = 0;
+                channel.*.attenuation = .OFF;
+                channel.*.output_signal = 0;
+                switch (channel.generator) {
+                    .tone => |*generator| generator.* = Generator.defaultTone.tone,
+                    .noise => |*generator| generator.* = Generator.defaultNoise.noise,
+                }
+            }
         }
 
         /// Execute one clock cycle
         pub fn tick(self: *Self, in_bus: Bus) Bus {
             var bus = in_bus;
-            if ((bus & CE) != 0) {
-                if ((bus & WE) != 0) {
-                    bus = self.write(bus);
-                }
+            if (((bus & CE) != 0) and ((bus & WE) != 0)) {
+                bus = self.write(bus);
             }
             return bus;
         }
@@ -212,9 +217,105 @@ pub fn Type(comptime cfg: TypeConfig) type {
         /// Write a value to the PSG
         pub fn write(self: *Self, in_bus: Bus) Bus {
             const data = getData(in_bus);
-            _ = self;
-            _ = data;
+            const is_latch = data & DATA.LATCH != 0;
+            if (is_latch) {
+                const channel_addr: u2 = @truncate((data & DATA.CHANNEL) >> 5);
+                const is_attenuation = data & DATA.ATTENUATION != 0;
+                const channel = &self.channel[channel_addr];
+                self.channel_addr_latch = channel_addr;
+                if (is_attenuation) {
+                    const value: u4 = @truncate(data & DATA.VALUE_LOW);
+                    channel.*.attenuation = @enumFromInt(value);
+                } else {
+                    switch (channel.*.generator) {
+                        .tone => |*generator| {
+                            const value: u4 = @truncate(data & DATA.VALUE_LOW);
+                            updateToneLow(generator, value);
+                        },
+                        .noise => |*generator| {
+                            const feedback: NOISE_FB = @enumFromInt(@as(u1, @truncate((data & DATA.NOISE_FB) >> 2)));
+                            const divider: NOISE_DIVIDER = @enumFromInt(@as(u2, @truncate(data & DATA.NOISE_DIVIDER)));
+                            updateNoise(generator, feedback, divider);
+                        },
+                    }
+                }
+            } else {
+                const channel = &self.channel[self.channel_addr_latch];
+                switch (channel.*.generator) {
+                    .tone => |*generator| {
+                        const value: u6 = @truncate(data & DATA.VALUE_HIGH);
+                        updateToneHigh(generator, value);
+                    },
+                    .noise => {},
+                }
+            }
             return in_bus;
+        }
+
+        fn updateToneLow(generator: *Tone, value: u4) void {
+            generator.*.divider = value;
+        }
+
+        fn updateToneHigh(generator: *Tone, value: u6) void {
+            const divider = generator.*.divider;
+            generator.*.divider = divider & @as(u10, DATA.VALUE_LOW) | (@as(u10, value) << 4);
+        }
+
+        fn updateNoise(generator: *Noise, feedback: NOISE_FB, divider: NOISE_DIVIDER) void {
+            generator.*.last_feedback = generator.*.feedback;
+            generator.*.feedback = feedback;
+            generator.*.divider = divider;
+        }
+
+        pub fn step(self: *Self) void {
+            for (&self.channel) |*channel| {
+                if (channel.*.attenuation == .OFF) break;
+                switch (channel.*.generator) {
+                    .tone => |generator| {
+                        if (generator.divider < 2) {
+                            channel.*.output_signal = 1;
+                        } else {
+                            channel.*.counter -= 1;
+                            if (channel.*.counter == 0) {
+                                channel.*.counter = generator.divider - 1;
+                                channel.*.output_signal ^= 1;
+                            }
+                        }
+                    },
+                    .noise => |*generator| {
+                        if ((generator.*.divider == .TYPE3) and (self.channel[2].generator.tone.divider < 2)) {
+                            channel.*.output_signal = 1;
+                        } else {
+                            channel.*.counter -= 1;
+                            if (channel.*.counter == 0) {
+                                if (generator.*.divider == .TYPE3) {
+                                    channel.*.counter = self.channel[2].generator.tone.divider - 1;
+                                } else {
+                                    channel.*.counter = (@as(u16, 0x10) << @intFromEnum(generator.*.divider)) - 1;
+                                }
+                                if (generator.*.last_feedback != generator.*.feedback) {
+                                    generator.*.last_feedback = generator.*.feedback;
+                                    generator.*.shift_register = 1 << 15;
+                                } else {
+                                    const bit0 = (generator.*.shift_register & 0x0001);
+                                    switch (generator.*.feedback) {
+                                        .PERIODIC => {
+                                            generator.*.shift_register >>= 1;
+                                            generator.*.shift_register |= (bit0 << 15);
+                                        },
+                                        .WHITE => {
+                                            const bit3 = ((generator.*.shift_register >> 3) & 0x0001);
+                                            generator.*.shift_register >>= 1;
+                                            generator.*.shift_register |= ((bit0 ^ bit3) << 15);
+                                        },
+                                    }
+                                }
+                                channel.*.output_signal = @truncate(generator.*.shift_register & 0x0001);
+                            }
+                        }
+                    },
+                }
+            }
         }
     };
 }

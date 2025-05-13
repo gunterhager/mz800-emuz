@@ -1,8 +1,5 @@
 ; Test writing too much into VRAM in MZ-700 mode
 ;
-; Use z80asm from the z88dk project to build binary file.
-; Command line:
-; z80asm -b TestMZ700VRAMOverwrite.asm
 
 include "MZ800.inc"
 
