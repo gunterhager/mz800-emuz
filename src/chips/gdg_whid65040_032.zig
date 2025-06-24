@@ -482,7 +482,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
             // Even addresses goto lower and odd to higher planes.
             // Therefore we shift down the address and add the correct
             // plane offset depending on the parity.
-            return (addr >> 1) + (if ((addr & 1) == 1) @as(u16, 0x2000) else @as(u16, 0x0000));
+            return (addr >> 1) + (if ((addr & 1) == 1) @as(u16, VRAM_PLANE_OFFSET) else @as(u16, 0x0000));
         }
 
         /// Plane data helper

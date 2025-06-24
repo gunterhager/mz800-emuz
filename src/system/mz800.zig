@@ -139,7 +139,7 @@ pub const CTC = intel8253.Type(.{ .pins = CTC_PINS, .bus = Bus });
 pub const GDG = gdg_whid65040_032.Type(.{ .pins = GDG_PINS, .bus = Bus });
 pub const PSG = sn76489an.Type(.{ .pins = PSG_PINS, .bus = Bus });
 pub const KeyBuf = keybuf.Type(.{ .num_slots = 4 });
-pub const Audio = audio.Type(.{ .num_voices = 2 });
+pub const Audio = audio.Type(.{ .num_voices = 4 });
 
 pub const getData = Z80.getData;
 pub const setData = Z80.setData;
@@ -350,7 +350,7 @@ pub fn Type() type {
             const CLK0: u64 = @intFromFloat(frequencies.CLK0);
             const num_ticks = clock.microSecondsToTicks(CLK0, micro_seconds);
             for (0..num_ticks) |_| {
-                self.clock.ticks += 1;
+                self.clock.ticks +%= 1;
                 // CPU tick
                 if ((self.clock.ticks % clock_dividers.CPU_CLK) == 0) {
                     bus = self.tick(bus);
