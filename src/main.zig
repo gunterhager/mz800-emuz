@@ -382,8 +382,8 @@ fn handleDroppedFiles() void {
 
 pub fn main() void {
     const display = MZ800.displayInfo(null);
-    const width = display.view.width;
-    const height = display.view.height;
+    const width = display.viewport.width;
+    const height = display.viewport.height;
     std.debug.print("🚨 Display: {}x{}\n", .{ width, height });
     sapp.run(.{
         .init_cb = init,
