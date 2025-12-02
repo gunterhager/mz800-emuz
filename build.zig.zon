@@ -25,16 +25,16 @@
     // internet connectivity.
     .dependencies = .{
         .chipz = .{
-            .url = "git+https://github.com/gunterhager/chipz.git#3d24be56f7bf4542dcf30a02e2bbf47ccc38e693",
-            .hash = "chipz-0.0.0-gW-vW6sFDwCCmI3NBd9ctiwM6d2-SnF23qAaXSTq8Usw",
+            .url = "git+https://github.com/gunterhager/chipz.git#2f4e6cb132e8c6f0d1ed239d1bdb43e4761a0be3",
+            .hash = "chipz-0.0.0-gW-vW6kFDwC_mha5koS433uocgwDMkNlTkhfyxO_JLMv",
         },
         .sokol = .{
-            .url = "git+https://github.com/floooh/sokol-zig.git#1d6a902f007fc32501ef26676f7cb73dcd81b047",
-            .hash = "sokol-0.1.0-pb1HK_ZPLgC-2uMA63u1iiB2BqPcibWOEZVH0Hz1ursz",
+            .url = "git+https://github.com/floooh/sokol-zig.git#14c6a260ea29fe740694a10252dc8074035bc84c",
+            .hash = "sokol-0.1.0-pb1HKx7kMgBAmqYLBtQ1W7CFVzjPNSAWl_bejkdx0jpR",
         },
         .cimgui = .{
-            .url = "git+https://github.com/floooh/dcimgui.git#581c2e909c899c21923c779d4c41ea56ab93bbb4",
-            .hash = "cimgui-0.1.0-44ClkQ14kwAiwcr3ioDjxvPuiWQctWrt-tIFtsfP6xmU",
+            .url = "git+https://github.com/floooh/dcimgui.git#a89e0594214cf315de033c7cb6c144c7b54da09b",
+            .hash = "cimgui-0.1.0-44Clkd6YlAAYULKHDwsDX9EPmka-VAVEjUl-o6ve307E",
         },
     },
     .paths = .{
