@@ -1,9 +1,6 @@
 ; Dump all characters in CGROM to the screen without using monitor routines
 ; then scroll the screen using hardware scrolling
 ;
-; Use z80asm from the z88dk project to build binary file.
-; Command line:
-; z80asm -b TestScroll.asm
 
 include "MZ800.inc"
 

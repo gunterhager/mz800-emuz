@@ -179,11 +179,17 @@ export fn init() void {
     host.audio.init(.{});
     host.time.init();
     host.prof.init();
-    sys.initInPlace(.{ .roms = .{
-        .rom1 = @embedFile("system/roms/MZ800_ROM1.bin"),
-        .cgrom = @embedFile("system/roms/MZ800_CGROM.bin"),
-        .rom2 = @embedFile("system/roms/MZ800_ROM2.bin"),
-    } });
+    sys.initInPlace(.{
+        .audio = .{
+            .sample_rate = @intCast(host.audio.sampleRate()),
+            .callback = host.audio.push,
+        },
+        .roms = .{
+            .rom1 = @embedFile("system/roms/MZ800_ROM1.bin"),
+            .cgrom = @embedFile("system/roms/MZ800_CGROM.bin"),
+            .rom2 = @embedFile("system/roms/MZ800_ROM2.bin"),
+        },
+    });
     host.gfx.init(.{
         .display = sys.displayInfo(),
         .pixel_aspect = .{
@@ -376,8 +382,8 @@ fn handleDroppedFiles() void {
 
 pub fn main() void {
     const display = MZ800.displayInfo(null);
-    const width = display.view.width;
-    const height = display.view.height;
+    const width = display.viewport.width;
+    const height = display.viewport.height;
     std.debug.print("🚨 Display: {}x{}\n", .{ width, height });
     sapp.run(.{
         .init_cb = init,
