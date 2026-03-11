@@ -23,7 +23,7 @@ fn mz800Options() MZ800.Options {
     } };
 }
 
-fn checkMem(sut: MZ800, start: u16, size: u17, even: u8, odd: u8) bool {
+fn checkMem(sut: *const MZ800, start: u16, size: u17, even: u8, odd: u8) bool {
     const end = start + size;
     for (start..end) |index| {
         const addr: u16 = @intCast(index);
@@ -36,23 +36,23 @@ fn checkMem(sut: MZ800, start: u16, size: u17, even: u8, odd: u8) bool {
     return true;
 }
 
-fn checkRAM(sut: MZ800, start: u16, size: u17) bool {
+fn checkRAM(sut: *const MZ800, start: u16, size: u17) bool {
     return checkMem(sut, start, size, 0x00, 0xff);
 }
 
-fn checkROM(sut: MZ800, start: u16, size: u17, data: u8) bool {
+fn checkROM(sut: *const MZ800, start: u16, size: u17, data: u8) bool {
     return checkMem(sut, start, size, data, data);
 }
 
-fn checkROM1(sut: MZ800) bool {
+fn checkROM1(sut: *const MZ800) bool {
     return checkROM(sut, MEM_CONFIG.ROM1_START, MEM_CONFIG.ROM1_SIZE, content.rom1);
 }
 
-fn checkCGROM(sut: MZ800) bool {
+fn checkCGROM(sut: *const MZ800) bool {
     return checkROM(sut, MEM_CONFIG.CGROM_START, MEM_CONFIG.CGROM_SIZE, content.cgrom);
 }
 
-fn checkROM2(sut: MZ800) bool {
+fn checkROM2(sut: *const MZ800) bool {
     return checkROM(sut, MEM_CONFIG.ROM2_START, MEM_CONFIG.ROM2_SIZE, content.rom2);
 }
 
@@ -60,14 +60,15 @@ test "init" {
     var sut: MZ800 = undefined;
     sut.initInPlace(mz800Options());
     // Check memory layout after boot
-    try expect(checkROM1(sut));
-    try expect(checkCGROM(sut));
-    try expect(checkRAM(sut, 0x2000, 0xc000));
-    try expect(checkROM2(sut));
+    try expect(checkROM1(&sut));
+    try expect(checkCGROM(&sut));
+    try expect(checkRAM(&sut, 0x2000, 0xc000));
+    try expect(checkROM2(&sut));
 }
 
 test "MZ800 bank switching" {
-    var sut: MZ800 = undefined;
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
     sut.initInPlace(mz800Options());
 
     // Initial layout (all ROMs and VRAM banked in)
@@ -160,7 +161,8 @@ test "MZ800 bank switching" {
 }
 
 test "MZ700 bank switching" {
-    var sut: MZ800 = undefined;
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
     sut.initInPlace(mz800Options());
     sut.gdg.is_mz700 = true;
 
