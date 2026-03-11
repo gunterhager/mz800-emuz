@@ -15,7 +15,7 @@ test "load obj file" {
     try tmp.dir.writeFile(std.testing.io, .{ .sub_path = input_file_name, .data = input_file });
 
     var obj_file: MZF = undefined;
-    obj_file.load(std.testing.io, tmp.dir, input_file_name) catch |err| {
+    obj_file.load(tmp.dir, input_file_name) catch |err| {
         std.debug.print("Error loading file '{s}': {}\n", .{ input_file_name, err });
     };
     try expectEqual(obj_file.header.start_address, 0x2000);
