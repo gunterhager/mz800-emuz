@@ -30,12 +30,21 @@ pub fn Type() type {
         reader_buffer: [0x100000]u8, // 64K buffer
         data: [0x100000]u8, // 64K buffer
 
-        pub fn load(self: *Self, io: std.Io, dir: std.Io.Dir, path: []const u8) !void {
-            var file = try dir.openFile(io, path, .{});
+        pub fn load(self: *Self, dir: std.Io.Dir, path: []const u8) !void {
+            const io = std.Io.Threaded.global_single_threaded.io();
+            const file = try dir.openFile(io, path, .{});
             defer file.close(io);
-            var io_reader = file.reader(io, &self.reader_buffer);
-            self.header = try io_reader.takeStruct(Header, .little);
-            const len = try io_reader.readSliceShort(&self.data);
+
+            const header_size = @sizeOf(Header);
+
+            // Read header bytes
+            var header_bytes: [header_size]u8 = undefined;
+            const header_read = try file.readPositionalAll(io, &header_bytes, 0);
+            if (header_read != header_size) return error.UnexpectedEndOfFile;
+            self.header = @bitCast(header_bytes);
+
+            // Read data after header
+            const len = try file.readPositionalAll(io, &self.data, header_size);
 
             if (self.header.attribute != .OBJ) {
                 // Currently only OBJ files can be read

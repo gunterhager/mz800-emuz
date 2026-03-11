@@ -371,8 +371,7 @@ fn handleDroppedFiles() void {
     var obj_file: MZF = undefined;
     const path = sapp.getDroppedFilePath(0);
     std.debug.print("🚨 Loading file: {s}\n", .{path});
-    var threaded = Io.Threaded.init(std.mem.Allocator.failing, .{});
-    obj_file.load(threaded.io(), Io.Dir.cwd(), path) catch |err| {
+    obj_file.load(.cwd(), path) catch |err| {
         std.debug.print("Error loading file '{s}': {}\n", .{ path, err });
     };
     std.debug.print("🚨 Name: {s}\n", .{obj_file.display_name});
@@ -383,6 +382,8 @@ fn handleDroppedFiles() void {
 
 pub fn main() void {
     const display = MZ800.displayInfo(null);
+    const width = display.viewport.width;
+    const height = display.viewport.height;
     const width = display.viewport.width;
     const height = display.viewport.height;
     std.debug.print("🚨 Display: {}x{}\n", .{ width, height });
