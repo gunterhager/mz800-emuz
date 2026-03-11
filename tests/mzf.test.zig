@@ -12,7 +12,7 @@ test "load obj file" {
     const input_file = @embedFile("./asm/TestCharacters.mzf");
     var tmp = tmpDir(.{});
     defer tmp.cleanup();
-    try tmp.dir.writeFile(.{ .sub_path = input_file_name, .data = input_file });
+    try tmp.dir.writeFile(std.testing.io, .{ .sub_path = input_file_name, .data = input_file });
 
     var obj_file: MZF = undefined;
     obj_file.load(tmp.dir, input_file_name) catch |err| {
