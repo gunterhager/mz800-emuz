@@ -22,7 +22,7 @@ pub fn build(b: *std.Build) void {
     });
 
     // inject the cimgui header search path into the sokol C library compile step
-    dep_sokol.artifact("sokol_clib").addIncludePath(dep_cimgui.path("src"));
+    dep_sokol.artifact("sokol_clib").root_module.addIncludePath(dep_cimgui.path("src"));
 
     const mod_chips = b.addModule("chips", .{
         .root_source_file = b.path("src/chips/chips.zig"),
