@@ -1,5 +1,5 @@
 const std = @import("std");
-const fs = std.fs;
+const Io = std.Io;
 const GeneralPurposeAllocator = std.heap.GeneralPurposeAllocator;
 const sokol = @import("sokol");
 const sapp = sokol.app;
@@ -371,7 +371,8 @@ fn handleDroppedFiles() void {
     var obj_file: MZF = undefined;
     const path = sapp.getDroppedFilePath(0);
     std.debug.print("🚨 Loading file: {s}\n", .{path});
-    obj_file.load(std.fs.cwd(), path) catch |err| {
+    var threaded = Io.Threaded.init(std.mem.Allocator.failing, .{});
+    obj_file.load(threaded.io(), Io.Dir.cwd(), path) catch |err| {
         std.debug.print("Error loading file '{s}': {}\n", .{ path, err });
     };
     std.debug.print("🚨 Name: {s}\n", .{obj_file.display_name});

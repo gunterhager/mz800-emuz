@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:ziglang.org)",
+      "WebFetch(domain:codeberg.org)",
+      "WebFetch(domain:github.com)",
+      "Bash(zig build:*)",
+      "Bash(zig version:*)",
+      "Bash(for dir:*)",
+      "Bash(do echo:*)",
+      "Read(//Users/gupi/Development/Private/zig-dev/mz800-emuz/$dir/**)",
+      "Bash(done)"
+    ]
+  }
+}

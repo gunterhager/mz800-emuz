@@ -16,7 +16,7 @@
     // This field is optional.
     // This is currently advisory only; Zig does not yet do anything
     // with this value.
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.16.0-dev.2682+02142a54d",
 
     // This field is optional.
     // Each dependency must either provide a `url` and `hash`, or a `path`.
@@ -25,16 +25,16 @@
     // internet connectivity.
     .dependencies = .{
         .chipz = .{
-            .url = "git+https://github.com/gunterhager/chipz.git#2f4e6cb132e8c6f0d1ed239d1bdb43e4761a0be3",
-            .hash = "chipz-0.0.0-gW-vW6kFDwC_mha5koS433uocgwDMkNlTkhfyxO_JLMv",
+            .url = "git+https://github.com/gunterhager/chipz.git#879e6c50f9239a784efc7a967e11ecf812152c89",
+            .hash = "chipz-0.0.0-gW-vW3IGDwC1ahuYWySujNyq6ZshVomTk-AA6jObl-Ug",
         },
         .sokol = .{
-            .url = "git+https://github.com/floooh/sokol-zig.git#14c6a260ea29fe740694a10252dc8074035bc84c",
-            .hash = "sokol-0.1.0-pb1HKx7kMgBAmqYLBtQ1W7CFVzjPNSAWl_bejkdx0jpR",
+            .url = "git+https://github.com/floooh/sokol-zig.git#de5906fb0f81f96e92c1c67a2b8a24dc50872207",
+            .hash = "sokol-0.1.0-pb1HK9ngNgD_m7L3HpbsyJ-jHRGVzcd672pjJDEPBQWh",
         },
         .cimgui = .{
-            .url = "git+https://github.com/floooh/dcimgui.git#a89e0594214cf315de033c7cb6c144c7b54da09b",
-            .hash = "cimgui-0.1.0-44Clkd6YlAAYULKHDwsDX9EPmka-VAVEjUl-o6ve307E",
+            .url = "git+https://github.com/floooh/dcimgui.git#7621a8cb81ee4bb87767e6c81dc5b0bd40cfd442",
+            .hash = "cimgui-0.1.0-44ClkaTclwDxGs3Mn34j6NiB-kfbtUurNDAnJVMKWtSU",
         },
     },
     .paths = .{

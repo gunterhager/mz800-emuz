@@ -27,16 +27,15 @@ pub fn Type() type {
 
         header: Header,
         display_name: [17:0]u8, // Name in regular ASCII
+        reader_buffer: [0x100000]u8, // 64K buffer
         data: [0x100000]u8, // 64K buffer
 
-        pub fn load(self: *Self, dir: std.fs.Dir, path: []const u8) !void {
-            var file = try dir.openFile(path, .{});
-            defer file.close();
-            var file_reader = file.reader(&self.data);
-            var io_reader = file.reader(&self.data).interface;
+        pub fn load(self: *Self, io: std.Io, dir: std.Io.Dir, path: []const u8) !void {
+            var file = try dir.openFile(io, path, .{});
+            defer file.close(io);
+            var io_reader = file.reader(io, &self.reader_buffer);
             self.header = try io_reader.takeStruct(Header, .little);
-            try file_reader.seekBy(@sizeOf(Header));
-            const len = try file_reader.read(&self.data);
+            const len = try io_reader.readSliceShort(&self.data);
 
             if (self.header.attribute != .OBJ) {
                 // Currently only OBJ files can be read
