@@ -284,6 +284,7 @@ pub fn Type() type {
         junk_page: [Memory.PAGE_SIZE]u8,
         unmapped_page: [Memory.PAGE_SIZE]u8,
         audio: Audio,
+        audio_sample_tick: u64,
         /// Frame buffer for emulator display
         fb: [DISPLAY.FB_SIZE]u32 align(128),
 
@@ -318,6 +319,7 @@ pub fn Type() type {
                 .ram = [_]u8{0} ** MEM_CONFIG.MZ800.RAM_SIZE,
                 .rom = initRoms(opts),
                 .audio = Audio.init(opts.audio),
+                .audio_sample_tick = @intFromFloat(frequencies.CLK0 / @as(f64, @floatFromInt(opts.audio.sample_rate))),
                 .fb = std.mem.zeroes(@TypeOf(self.fb)),
                 .junk_page = std.mem.zeroes(@TypeOf(self.junk_page)),
                 .unmapped_page = [_]u8{0xFF} ** Memory.PAGE_SIZE,
@@ -369,9 +371,14 @@ pub fn Type() type {
                     bus ^= CTC_CLK1;
                     bus = self.ctc.setCLK1(bus);
                 }
-                // PSG tick
+                // PSG tick (~221.7 kHz)
                 if ((self.clock.ticks % clock_dividers.PSG_CLK) == 0) {
                     bus = self.psg.tick(bus);
+                    self.psg.step();
+                }
+                // Audio sample tick (at host sample rate)
+                if ((self.clock.ticks % self.audio_sample_tick) == 0) {
+                    self.audio.put(self.psg.sample());
                 }
                 // Video tick
                 bus = self.videoTick(bus);

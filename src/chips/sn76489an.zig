@@ -61,14 +61,14 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         // pin bit-masks
         pub const DBUS = maskm(Bus, &cfg.pins.DBUS);
-        pub const D0 = mask(Bus, cfg.pins.D[0]);
-        pub const D1 = mask(Bus, cfg.pins.D[1]);
-        pub const D2 = mask(Bus, cfg.pins.D[2]);
-        pub const D3 = mask(Bus, cfg.pins.D[3]);
-        pub const D4 = mask(Bus, cfg.pins.D[4]);
-        pub const D5 = mask(Bus, cfg.pins.D[5]);
-        pub const D6 = mask(Bus, cfg.pins.D[6]);
-        pub const D7 = mask(Bus, cfg.pins.D[7]);
+        pub const D0 = mask(Bus, cfg.pins.DBUS[0]);
+        pub const D1 = mask(Bus, cfg.pins.DBUS[1]);
+        pub const D2 = mask(Bus, cfg.pins.DBUS[2]);
+        pub const D3 = mask(Bus, cfg.pins.DBUS[3]);
+        pub const D4 = mask(Bus, cfg.pins.DBUS[4]);
+        pub const D5 = mask(Bus, cfg.pins.DBUS[5]);
+        pub const D6 = mask(Bus, cfg.pins.DBUS[6]);
+        pub const D7 = mask(Bus, cfg.pins.DBUS[7]);
         pub const CE = mask(Bus, cfg.pins.CE);
         pub const WE = mask(Bus, cfg.pins.WE);
 
@@ -94,7 +94,6 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         pub const Tone = struct {
             divider: u10,
-            divider_latch: u16,
         };
 
         /// Noise feedback
@@ -126,8 +125,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
             tone: Tone,
             noise: Noise,
 
-            pub const defaultTone: Generator = .{ .tone = .{ .divider = 0, .divider_latch = 0 } };
-            pub const defaultNoise: Generator = .{ .noise = .{ .feedback = .PERIODIC, .last_feedback = .PERIODIC, .divider = .TYPE0, .shift_register = 0 } };
+            pub const defaultTone: Generator = .{ .tone = .{ .divider = 0 } };
+            pub const defaultNoise: Generator = .{ .noise = .{ .feedback = .PERIODIC, .last_feedback = .PERIODIC, .divider = .TYPE0, .shift_register = 0x8000 } };
         };
 
         pub const Channel = struct {
@@ -231,6 +230,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                         .tone => |*generator| {
                             const value: u4 = @truncate(data & DATA.VALUE_LOW);
                             updateToneLow(generator, value);
+                            channel.*.counter = generator.*.divider;
                         },
                         .noise => |*generator| {
                             const feedback: NOISE_FB = @enumFromInt(@as(u1, @truncate((data & DATA.NOISE_FB) >> 2)));
@@ -245,6 +245,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                     .tone => |*generator| {
                         const value: u6 = @truncate(data & DATA.VALUE_HIGH);
                         updateToneHigh(generator, value);
+                        channel.*.counter = generator.*.divider;
                     },
                     .noise => {},
                 }
@@ -253,7 +254,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
         }
 
         fn updateToneLow(generator: *Tone, value: u4) void {
-            generator.*.divider = value;
+            generator.*.divider = (generator.*.divider & 0x3F0) | @as(u10, value);
         }
 
         fn updateToneHigh(generator: *Tone, value: u6) void {
@@ -267,9 +268,37 @@ pub fn Type(comptime cfg: TypeConfig) type {
             generator.*.divider = divider;
         }
 
+        const volume_table = [16]f32{
+            1.00000000, // 0 dB
+            0.79432823, // -2 dB
+            0.63095734, // -4 dB
+            0.50118723, // -6 dB
+            0.39810717, // -8 dB
+            0.31622776, // -10 dB
+            0.25118864, // -12 dB
+            0.19952623, // -14 dB
+            0.15848931, // -16 dB
+            0.12589254, // -18 dB
+            0.10000000, // -20 dB
+            0.07943282, // -22 dB
+            0.06309573, // -24 dB
+            0.05011872, // -26 dB
+            0.03981071, // -28 dB
+            0.00000000, // OFF
+        };
+
+        pub fn sample(self: *const Self) f32 {
+            var out: f32 = 0.0;
+            for (self.channel) |ch| {
+                const amp = volume_table[@intFromEnum(ch.attenuation)];
+                out += @as(f32, @floatFromInt(ch.output_signal)) * amp;
+            }
+            return out;
+        }
+
         pub fn step(self: *Self) void {
             for (&self.channel) |*channel| {
-                if (channel.*.attenuation == .OFF) break;
+                if (channel.*.attenuation == .OFF) continue;
                 switch (channel.*.generator) {
                     .tone => |generator| {
                         if (generator.divider < 2) {
