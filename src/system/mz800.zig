@@ -345,11 +345,13 @@ pub fn Type() type {
             self.ctc.reset();
             self.gdg.reset();
             self.cpu.reset();
-            // GATE pins are pulled high on real MZ-800 hardware
+            // GATE pins are pulled high on real MZ-800 hardware.
+            // Set gate directly to avoid triggering state machine transitions
+            // before the ROM programs the counters.
             self.bus |= CTC_GATE0 | CTC_GATE1 | CTC_GATE2;
-            self.bus = self.ctc.setGATE0(self.bus);
-            self.bus = self.ctc.setGATE1(self.bus);
-            self.bus = self.ctc.setGATE2(self.bus);
+            for (&self.ctc.counter) |*c| {
+                c.gate = 1;
+            }
         }
 
         pub fn exec(self: *Self, micro_seconds: u32) u32 {
