@@ -373,7 +373,6 @@ pub fn Type() type {
                 }
                 // PSG tick (~221.7 kHz)
                 if ((self.clock.ticks % clock_dividers.PSG_CLK) == 0) {
-                    bus = self.psg.tick(bus);
                     self.psg.step();
                 }
                 // Audio sample tick (at host sample rate)
@@ -446,6 +445,7 @@ pub fn Type() type {
             bus = self.pio.tick(bus);
             bus = self.ppi.tick(bus);
             bus = self.ctc.tick(bus);
+            bus = self.psg.tick(bus);
 
             return bus;
         }

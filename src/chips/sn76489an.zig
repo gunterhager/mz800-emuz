@@ -199,7 +199,10 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 channel.*.output_signal = 0;
                 switch (channel.generator) {
                     .tone => |*generator| generator.* = Generator.defaultTone.tone,
-                    .noise => |*generator| generator.* = Generator.defaultNoise.noise,
+                    .noise => |*generator| {
+                        generator.* = Generator.defaultNoise.noise;
+                        channel.*.counter = (@as(u16, 0x10) << @intFromEnum(generator.*.divider)) - 1;
+                    },
                 }
             }
         }
@@ -236,6 +239,9 @@ pub fn Type(comptime cfg: TypeConfig) type {
                             const feedback: NOISE_FB = @enumFromInt(@as(u1, @truncate((data & DATA.NOISE_FB) >> 2)));
                             const divider: NOISE_DIVIDER = @enumFromInt(@as(u2, @truncate(data & DATA.NOISE_DIVIDER)));
                             updateNoise(generator, feedback, divider);
+                            if (divider != .TYPE3) {
+                                channel.*.counter = (@as(u16, 0x10) << @intFromEnum(divider)) - 1;
+                            }
                         },
                     }
                 }
