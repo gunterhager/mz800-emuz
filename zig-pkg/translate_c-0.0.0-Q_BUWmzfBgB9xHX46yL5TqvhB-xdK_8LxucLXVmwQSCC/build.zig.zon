@@ -1,0 +1,27 @@
+.{
+    .name = .translate_c,
+
+    .version = "0.0.0",
+
+    .fingerprint = 0x1c84f6455a54f043, // Changing this has security and trust implications.
+
+    .minimum_zig_version = "0.16.0-dev.2670+56253d9e3",
+
+    .dependencies = .{
+        .aro = .{
+            .url = "git+https://github.com/Vexu/arocc#ce48ea5fd842af0580d7edec30cd9e9bf7656992",
+            .hash = "aro-0.0.0-JSD1QgjONgBnDWp-ML_g1_ianKS5yVS25g3LfePJ_yOr",
+        },
+    },
+
+    .paths = .{
+        "build",
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "lib",
+        "test/cases.zig",
+        "LICENSE",
+        "README.md",
+    },
+}

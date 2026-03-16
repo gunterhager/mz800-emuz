@@ -76,14 +76,14 @@ pub fn Type(comptime cfg: TypeConfig) type {
 
         // pin bit-masks
         pub const DBUS = maskm(Bus, &cfg.pins.DBUS);
-        pub const D0 = mask(Bus, cfg.pins.D[0]);
-        pub const D1 = mask(Bus, cfg.pins.D[1]);
-        pub const D2 = mask(Bus, cfg.pins.D[2]);
-        pub const D3 = mask(Bus, cfg.pins.D[3]);
-        pub const D4 = mask(Bus, cfg.pins.D[4]);
-        pub const D5 = mask(Bus, cfg.pins.D[5]);
-        pub const D6 = mask(Bus, cfg.pins.D[6]);
-        pub const D7 = mask(Bus, cfg.pins.D[7]);
+        pub const D0 = mask(Bus, cfg.pins.DBUS[0]);
+        pub const D1 = mask(Bus, cfg.pins.DBUS[1]);
+        pub const D2 = mask(Bus, cfg.pins.DBUS[2]);
+        pub const D3 = mask(Bus, cfg.pins.DBUS[3]);
+        pub const D4 = mask(Bus, cfg.pins.DBUS[4]);
+        pub const D5 = mask(Bus, cfg.pins.DBUS[5]);
+        pub const D6 = mask(Bus, cfg.pins.DBUS[6]);
+        pub const D7 = mask(Bus, cfg.pins.DBUS[7]);
         pub const ABUS = maskm(Bus, &cfg.pins.ABUS);
         pub const A0 = mask(Bus, cfg.pins.ABUS[0]);
         pub const A1 = mask(Bus, cfg.pins.ABUS[1]);
@@ -212,7 +212,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
             read_load_format: READ_LOAD_FORMAT = .LSB_MSB,
             state: State = .init_done,
             load_done: bool = false,
-            read_load_msb: bool = false,
+            write_msb_pending: bool = false, // true after LSB write in LSB_MSB mode, cleared after MSB write
+            read_msb_pending: bool = false, // true after LSB read in LSB_MSB mode, cleared after MSB read
             latch_operation: bool = false, // if true we need to set read_latch
             read_latch: u16 = 0,
             preset_value: u17 = 0xffff,
@@ -464,7 +465,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
             pub fn writeControl(self: *Counter, bus: Bus) Bus {
                 const data = getData(bus);
                 const read_load_format: READ_LOAD_FORMAT = @enumFromInt((data >> 4) & 0b11);
-                self.read_load_msb = false;
+                self.read_msb_pending = false;
                 if (read_load_format == .LATCH) {
                     self.latch_operation = true;
                     self.read_latch = @truncate(self.value);
@@ -472,6 +473,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 }
 
                 self.latch_operation = false;
+                self.write_msb_pending = false;
+                self.read_msb_pending = false;
                 self.read_load_format = read_load_format;
                 const raw_mode = (data >> 1) & 0b111;
                 self.mode = @enumFromInt(if (raw_mode > 5) (raw_mode & 0b101) else raw_mode);
@@ -486,6 +489,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 var bus = in_bus;
                 const data = getData(in_bus);
                 self.latch_operation = false;
+                // Mode 0: reset OUT on any byte write while counting (before awaiting MSB)
                 if ((self.mode == .MODE0) and (self.state != .init) and (self.state != .init_done)) {
                     self.state = .load;
                     bus = self.setOut(0, bus);
@@ -499,12 +503,13 @@ pub fn Type(comptime cfg: TypeConfig) type {
                         self.preset_latch = @as(u16, data) << 8;
                     },
                     .LSB_MSB => {
-                        if (self.read_load_msb == false) {
+                        if (self.write_msb_pending == false) {
                             self.preset_latch = data;
-                            self.read_load_msb = true;
+                            self.write_msb_pending = true;
+                            return bus; // wait for MSB before completing load
                         } else {
                             self.preset_latch |= @as(u16, data) << 8;
-                            self.read_load_msb = false;
+                            self.write_msb_pending = false;
                         }
                     },
                     else => {},
@@ -514,11 +519,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                     if (self.preset_value == 1) {
                         self.preset_value = 0x10001;
                     }
-                    self.mode3_half_value = self.preset_value;
-                    if ((self.mode3_half_value & 1) == 1) {
-                        self.mode3_half_value += 1;
-                    }
-                    self.mode3_half_value >>= 1;
+                    self.mode3_half_value = self.preset_value >> 1; // floor(N/2) for low phase
                 }
 
                 // LOAD completed
@@ -552,11 +553,11 @@ pub fn Type(comptime cfg: TypeConfig) type {
                         result = @truncate(value >> 8);
                     },
                     .LSB_MSB => {
-                        if (self.read_load_msb == false) {
-                            self.read_load_msb = true;
+                        if (self.read_msb_pending == false) {
+                            self.read_msb_pending = true;
                             result = @truncate(value);
                         } else {
-                            self.read_load_msb = false;
+                            self.read_msb_pending = false;
                             self.latch_operation = false;
                             result = @truncate(value >> 8);
                         }
@@ -585,7 +586,6 @@ pub fn Type(comptime cfg: TypeConfig) type {
             },
         },
         control: u8 = 0,
-        reset_active: bool = false,
 
         /// Get data bus value
         pub inline fn getData(bus: Bus) u8 {
@@ -614,9 +614,27 @@ pub fn Type(comptime cfg: TypeConfig) type {
             return self;
         }
 
-        /// Reset CTC instance
+        /// Reset CTC instance — restores all counters to their power-on state
         pub fn reset(self: *Self) void {
-            self.reset_active = true;
+            for (&self.counter) |*c| {
+                c.out = 0;
+                c.gate = 0;
+                c.clk = 0;
+                c.mode = .MODE0;
+                c.bcd = false;
+                c.read_load_format = .LSB_MSB;
+                c.state = .init_done;
+                c.load_done = false;
+                c.write_msb_pending = false;
+                c.read_msb_pending = false;
+                c.latch_operation = false;
+                c.read_latch = 0;
+                c.preset_value = 0xffff;
+                c.preset_latch = 0;
+                c.value = 0;
+                c.mode3_destination_value = 0;
+                c.mode3_half_value = 0;
+            }
         }
 
         /// Execute one clock cycle
