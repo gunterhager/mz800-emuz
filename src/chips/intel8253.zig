@@ -252,7 +252,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                                 return bus;
                             },
                             .load_done => {
-                                self.writeValue(@truncate(self.preset_value));
+                                self.writeValue(self.preset_value);
                                 if (self.gate == 1) {
                                     self.state = .countdown;
                                 } else {
@@ -293,7 +293,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                                 return bus;
                             },
                             .preset => {
-                                self.writeValue(@truncate(self.preset_value));
+                                self.writeValue(self.preset_value);
                                 bus = self.setOut(0, bus);
                                 self.state = .countdown;
                                 return bus;
@@ -318,7 +318,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                             },
                             .preset, .load_done => {
                                 bus = self.setOut(1, bus);
-                                self.writeValue(@truncate(self.preset_value));
+                                self.writeValue(self.preset_value);
                                 if (self.value == 0x0001) {
                                     self.state = .preset_error;
                                 } else {
@@ -344,7 +344,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                                         self.mode3_destination_value = 0;
                                     } else {
                                         bus = self.setOut(1, bus);
-                                        self.writeValue(@truncate(self.preset_value));
+                                        self.writeValue(self.preset_value);
                                         self.mode3_destination_value = self.mode3_half_value;
                                         if (self.gate == 1) {
                                             self.state = .countdown;
@@ -357,7 +357,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                             },
                             .preset, .load_done => {
                                 bus = self.setOut(1, bus);
-                                self.writeValue(@truncate(self.preset_value));
+                                self.writeValue(self.preset_value);
                                 self.mode3_destination_value = self.mode3_half_value;
                                 if (self.gate == 1) {
                                     self.state = .countdown;
@@ -451,8 +451,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
             }
 
             /// Sets value interpreting given new_value as binary or BCD depending on the bcd flag
-            fn writeValue(self: *Counter, new_value: u16) void {
-                self.value = if (self.bcd) intFromBCD(new_value) else new_value;
+            fn writeValue(self: *Counter, new_value: u17) void {
+                self.value = if (self.bcd) intFromBCD(@truncate(new_value)) else new_value;
             }
 
             /// Returns value in binary or BCD depending on the bcd flag.

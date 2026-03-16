@@ -258,9 +258,15 @@ test "Mode 2 operation" {
     bus = bus | INTEL8253.CS | INTEL8253.WR;
     bus = ctc.tick(bus);
 
+    // Gate must be high for MODE2 to count
+    bus = setGate(&ctc, bus, INTEL8253.GATE0, true);
+
     // Generate two CLK0 pulses to load the counter
-    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
-    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // init -> load_done
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // load_done -> countdown, OUT=1
+
+    // OUT should be high immediately after loading
+    try expectEqual(INTEL8253.OUT0, bus & INTEL8253.OUT0);
 
     // Check initial value
     bus = INTEL8253.setABUS(bus, INTEL8253.ABUS_MODE.COUNTER0);
@@ -273,11 +279,15 @@ test "Mode 2 operation" {
     bus = ctc.tick(bus);
     try expectEqual(@as(u8, 0), INTEL8253.getData(bus)); // MSB
 
-    // Run for 8 cycles (2 complete periods) and check output
+    // Run for 8 cycles (2 complete periods of 4 clocks each):
+    // OUT low for 1 clock per period when value hits 1, high for remaining 3
     var i: u8 = 0;
     while (i < 8) : (i += 1) {
         bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
     }
+
+    // After 2 complete periods OUT is high and value is back to 4
+    try expectEqual(INTEL8253.OUT0, bus & INTEL8253.OUT0);
 
     // Read final value
     bus = INTEL8253.setABUS(bus, INTEL8253.ABUS_MODE.COUNTER0);
@@ -312,9 +322,15 @@ test "Mode 3 operation" {
     bus = bus | INTEL8253.CS | INTEL8253.WR;
     bus = ctc.tick(bus);
 
+    // Gate must be high for MODE3 to count
+    bus = setGate(&ctc, bus, INTEL8253.GATE0, true);
+
     // Generate two CLK0 pulses to load the counter
-    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
-    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // init -> load_done
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // load_done -> countdown, OUT=1
+
+    // OUT should be high immediately after loading
+    try expectEqual(INTEL8253.OUT0, bus & INTEL8253.OUT0);
 
     // Check initial value
     bus = INTEL8253.setABUS(bus, INTEL8253.ABUS_MODE.COUNTER0);
@@ -327,11 +343,15 @@ test "Mode 3 operation" {
     bus = ctc.tick(bus);
     try expectEqual(@as(u8, 0), INTEL8253.getData(bus)); // MSB
 
-    // Run for 12 cycles (2 complete periods) and check output
+    // Run for 12 cycles (2 complete periods of 6 clocks each):
+    // OUT high for 3 clocks, low for 3 clocks (symmetric square wave)
     var i: u8 = 0;
     while (i < 12) : (i += 1) {
         bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
     }
+
+    // After 2 complete periods OUT is high and value is back to 6
+    try expectEqual(INTEL8253.OUT0, bus & INTEL8253.OUT0);
 
     // Read final value
     bus = INTEL8253.setABUS(bus, INTEL8253.ABUS_MODE.COUNTER0);
@@ -546,4 +566,131 @@ test "reset clears counter state" {
     try expectEqual(false, ctc.counter[0].read_msb_pending);
     try expectEqual(@as(u1, 0), ctc.counter[0].out);
     try expectEqual(@as(u17, 0), ctc.counter[0].value);
+}
+
+test "Count value 0 loads as 65536" {
+    var ctc = INTEL8253.init();
+    var bus: Bus = 0;
+
+    // Configure counter 0 for MODE0
+    bus = INTEL8253.setData(bus, INTEL8253.CTRL.SC.COUNTER0 | INTEL8253.CTRL.RW.LSB_MSB | INTEL8253.CTRL.MODE.MODE0);
+    bus = INTEL8253.setABUS(bus, INTEL8253.ABUS_MODE.CTRL);
+    bus = bus | INTEL8253.CS | INTEL8253.WR;
+    bus = ctc.tick(bus);
+
+    // Write count 0x0000 — on real 8253 this means 65536
+    bus = INTEL8253.setData(bus, 0x00);
+    bus = INTEL8253.setABUS(bus, INTEL8253.ABUS_MODE.COUNTER0);
+    bus = bus | INTEL8253.CS | INTEL8253.WR;
+    bus = ctc.tick(bus);
+    bus = INTEL8253.setData(bus, 0x00);
+    bus = ctc.tick(bus);
+
+    try expectEqual(@as(u17, 0x10000), ctc.counter[0].preset_value);
+
+    // Set gate and load
+    bus = setGate(&ctc, bus, INTEL8253.GATE0, true);
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // init -> load_done
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // load_done -> countdown, value=0x10000
+
+    try expectEqual(@as(u17, 0x10000), ctc.counter[0].value);
+    try expectEqual(INTEL8253.State.countdown, ctc.counter[0].state);
+
+    // First two countdown ticks must not underflow
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
+    try expectEqual(@as(u17, 0xffff), ctc.counter[0].value);
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
+    try expectEqual(@as(u17, 0xfffe), ctc.counter[0].value);
+    // OUT still low — terminal count not yet reached
+    try expectEqual(@as(Bus, 0), bus & INTEL8253.OUT0);
+}
+
+test "MODE0 gate high before programming starts counting immediately" {
+    var ctc = INTEL8253.init();
+    var bus: Bus = 0;
+
+    // Set gate directly, simulating a hardware pull-up present before the ROM
+    // programs the counter (e.g. MZ-800 reset scenario)
+    ctc.counter[0].gate = 1;
+
+    // Program counter 0 in MODE0 with count=3
+    bus = INTEL8253.setData(bus, INTEL8253.CTRL.SC.COUNTER0 | INTEL8253.CTRL.RW.LSB_MSB | INTEL8253.CTRL.MODE.MODE0);
+    bus = INTEL8253.setABUS(bus, INTEL8253.ABUS_MODE.CTRL);
+    bus = bus | INTEL8253.CS | INTEL8253.WR;
+    bus = ctc.tick(bus);
+
+    bus = INTEL8253.setData(bus, 3);
+    bus = INTEL8253.setABUS(bus, INTEL8253.ABUS_MODE.COUNTER0);
+    bus = bus | INTEL8253.CS | INTEL8253.WR;
+    bus = ctc.tick(bus);
+    bus = INTEL8253.setData(bus, 0);
+    bus = ctc.tick(bus);
+
+    // CLK 1: init -> load_done
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
+    try expectEqual(INTEL8253.State.load_done, ctc.counter[0].state);
+
+    // CLK 2: load_done -> countdown (gate already 1), value=3
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
+    try expectEqual(INTEL8253.State.countdown, ctc.counter[0].state);
+    try expectEqual(@as(u17, 3), ctc.counter[0].value);
+
+    // CLK 3,4,5: count down to terminal count
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // value=2
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // value=1
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // value=0 -> OUT=1, blind_count
+
+    try expectEqual(@as(u1, 1), ctc.counter[0].out);
+    try expectEqual(INTEL8253.State.blind_count, ctc.counter[0].state);
+}
+
+test "MODE0 GATE low pauses counting, high resumes from same value" {
+    var ctc = INTEL8253.init();
+    var bus: Bus = 0;
+
+    // Configure counter 0 for MODE0 with count=10
+    bus = INTEL8253.setData(bus, INTEL8253.CTRL.SC.COUNTER0 | INTEL8253.CTRL.RW.LSB_MSB | INTEL8253.CTRL.MODE.MODE0);
+    bus = INTEL8253.setABUS(bus, INTEL8253.ABUS_MODE.CTRL);
+    bus = bus | INTEL8253.CS | INTEL8253.WR;
+    bus = ctc.tick(bus);
+
+    bus = INTEL8253.setData(bus, 10);
+    bus = INTEL8253.setABUS(bus, INTEL8253.ABUS_MODE.COUNTER0);
+    bus = bus | INTEL8253.CS | INTEL8253.WR;
+    bus = ctc.tick(bus);
+    bus = INTEL8253.setData(bus, 0);
+    bus = ctc.tick(bus);
+
+    // Load and start counting
+    bus = setGate(&ctc, bus, INTEL8253.GATE0, true);
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // init -> load_done
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // load_done -> countdown, value=10
+
+    // Count 3 ticks: value reaches 7
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // 9
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // 8
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0); // 7
+    try expectEqual(@as(u17, 7), ctc.counter[0].value);
+
+    // Gate goes low: counting pauses
+    bus = setGate(&ctc, bus, INTEL8253.GATE0, false);
+    try expectEqual(INTEL8253.State.wait_gate_high, ctc.counter[0].state);
+
+    // 3 CLK pulses with gate low — value must not change
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
+    bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
+    try expectEqual(@as(u17, 7), ctc.counter[0].value);
+
+    // Gate goes high: counting resumes from 7
+    bus = setGate(&ctc, bus, INTEL8253.GATE0, true);
+    try expectEqual(INTEL8253.State.countdown, ctc.counter[0].state);
+
+    // 7 more ticks reach terminal count
+    var i: u8 = 0;
+    while (i < 7) : (i += 1) {
+        bus = generateClockPulse(&ctc, bus, INTEL8253.CLK0);
+    }
+    try expectEqual(@as(u1, 1), ctc.counter[0].out);
+    try expectEqual(INTEL8253.State.blind_count, ctc.counter[0].state);
 }
