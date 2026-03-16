@@ -1,8 +1,5 @@
 ; Writing to MZ-700 character and color VRAM
 ;
-; Use z80asm from the z88dk project to build binary file.
-; Command line:
-; z80asm -b TestMZ700Color.asm
 
 include "MZ800.inc"
 

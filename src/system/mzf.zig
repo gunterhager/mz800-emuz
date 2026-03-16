@@ -26,7 +26,8 @@ pub fn Type() type {
         };
 
         header: Header,
-        display_name: [17]u8, // Name in regular ASCII
+        display_name: [17:0]u8, // Name in regular ASCII
+        reader_buffer: [0x100000]u8, // 64K buffer
         data: [0x100000]u8, // 64K buffer
 
         pub fn load(self: *Self, dir: std.Io.Dir, path: []const u8) !void {
@@ -49,10 +50,6 @@ pub fn Type() type {
                 // Currently only OBJ files can be read
                 return error.WrongFileType;
             }
-            if (len != self.header.file_length) {
-                std.debug.print("🚨 File length mismatch: header file length: {}, found file length: {}\n", .{ self.header.file_length, len });
-                return error.WrongFileLength;
-            }
             for (self.header.name, 0..) |char, index| {
                 if (char == 0x0d) {
                     self.display_name[index] = 0;
@@ -60,6 +57,10 @@ pub fn Type() type {
                 } else {
                     self.display_name[index] = mzToASCII(char);
                 }
+            }
+            if (len != self.header.file_length) {
+                std.debug.print("🚨 File length mismatch: header file length: {}, found file length: {}\n", .{ self.header.file_length, len });
+                return error.WrongFileLength;
             }
         }
     };
