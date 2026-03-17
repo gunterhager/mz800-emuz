@@ -344,6 +344,7 @@ pub fn Type() type {
             self.ppi.reset();
             self.ctc.reset();
             self.gdg.reset();
+            self.psg.reset();
             self.cpu.reset();
             // GATE pins are pulled high on real MZ-800 hardware.
             // Set gate directly to avoid triggering state machine transitions
