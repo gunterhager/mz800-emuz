@@ -76,6 +76,9 @@ test "MZ800 bank switching" {
     const sut = try std.testing.allocator.create(MZ800);
     defer std.testing.allocator.destroy(sut);
     sut.initInPlace(mz800Options());
+    // GDG resets to MZ-700 mode (hardware default). In a running system the ROM reads the
+    // DIP switch via status bit 1 and programs DMD to MZ-800. Simulate that here.
+    sut.gdg.set_dmd(0);
 
     // Initial layout (all ROMs and VRAM banked in)
     try expect(checkROM1(sut));
