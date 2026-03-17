@@ -378,6 +378,15 @@ pub fn Type() type {
                     // Toggle CLK1
                     bus ^= CTC_CLK1;
                     bus = self.ctc.setCLK1(bus);
+                    // CLK2 is driven by OUT1 of Counter 1.
+                    // Mirror counter[1].out onto the CLK2 bus pin;
+                    // Counter.setCLK only ticks counter 2 on a 1→0 falling edge.
+                    if (self.ctc.counter[1].out == 0) {
+                        bus &= ~CTC_CLK2;
+                    } else {
+                        bus |= CTC_CLK2;
+                    }
+                    bus = self.ctc.setCLK2(bus);
                 }
                 // PSG tick (~221.7 kHz)
                 if ((self.clock.ticks % clock_dividers.PSG_CLK) == 0) {

@@ -19,8 +19,7 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(gh pr:*)",
-      "Bash(grep -r \"CTC1\\\\|CTC2\\\\|counter 1\\\\|counter 2\" /Users/gupi/Development/Private/mz800emu-code-r247-branches-2.0.x-preview/src/emulator/mzarch/mz800 --include=*.c --include=*.h)"
+      "Bash(gh pr:*)"
     ]
   }
 }
