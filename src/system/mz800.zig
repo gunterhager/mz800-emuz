@@ -281,6 +281,8 @@ pub fn Type() type {
         ram: [MEM_CONFIG.MZ800.RAM_SIZE]u8,
         rom: ROM,
         vram_banked_in: bool = false,
+        /// Preferred mode to boot into after reset. Survives sys.reset() calls.
+        preferred_is_mz700: bool = false,
         junk_page: [Memory.PAGE_SIZE]u8,
         unmapped_page: [Memory.PAGE_SIZE]u8,
         audio: Audio,
@@ -343,6 +345,9 @@ pub fn Type() type {
             self.pio.reset();
             self.ppi.reset();
             self.ctc.reset();
+            // Sync DIP switch to GDG before reset so the ROM reads the correct
+            // status bit 1 and programs the DMD register accordingly.
+            self.gdg.dip_is_mz700 = self.preferred_is_mz700;
             self.gdg.reset();
             self.psg.reset();
             self.cpu.reset();

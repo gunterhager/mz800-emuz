@@ -285,6 +285,11 @@ pub fn Type(comptime cfg: TypeConfig) type {
         /// Indicates if machine is in MZ-700 mode. This is actually toggled by setting the DMD register.
         is_mz700: bool = false,
 
+        /// DIP switch state: true = MZ-700 compat mode selected, false = MZ-800 mode (default).
+        /// Set by the system before each reset; reflects the user's preference.
+        /// The ROM reads this via status register bit 1 to configure the display mode at boot.
+        dip_is_mz700: bool = false,
+
         /// Get data bus value
         pub inline fn getData(bus: Bus) u8 {
             return @truncate(bus >> cfg.pins.DBUS[0]);
@@ -337,8 +342,11 @@ pub fn Type(comptime cfg: TypeConfig) type {
         pub fn reset(self: *Self) void {
             self.wf = 0;
             self.rf = 0;
-            self.status = 0; // needs to be set before setting DMD
-            self.set_dmd(0);
+            self.status = 0;
+            // Hardware power-on default is MZ-700 compat mode.
+            // The ROM reads the DIP switch (dip_is_mz700) via status register bit 1
+            // and programs the DMD register to enter MZ-800 mode if requested.
+            self.set_dmd(DMD_MODE.MZ700);
             self.resetScroll();
             self.bcol = 0;
             self.plt = std.mem.zeroes(@TypeOf((self.plt)));
@@ -377,8 +385,11 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 // Read
                 IORQ | RD => {
                     // Display status register
+                    // Bit 1 reflects the DIP switch (dip_is_mz700), not the software DMD.
+                    // The ROM reads this at boot to determine whether to enter MZ-800 mode.
                     if (low_addr == IO_ADDR.RD.STATUS) {
-                        bus = setData(bus, self.status);
+                        const mz800_bit: u8 = if (!self.dip_is_mz700) STATUS_MODE.MZ800 else 0;
+                        bus = setData(bus, (self.status & ~STATUS_MODE.MZ800) | mz800_bit);
                     }
                 },
                 // Write
@@ -456,16 +467,12 @@ pub fn Type(comptime cfg: TypeConfig) type {
         }
 
         /// Set display mode register.
-        /// This sets also the MZ800/MZ700 mode flags.
+        /// This sets the MZ800/MZ700 runtime mode flag.
+        /// Note: status register bit 1 reflects the DIP switch (dip_is_mz700), not this value.
         pub fn set_dmd(self: *Self, value: u8) void {
             // Only the lower nibble can be set
             self.dmd = value & 0x0f;
             self.is_mz700 = (value & 0x0f) == DMD_MODE.MZ700;
-            if (self.is_mz700) {
-                self.status &= ~STATUS_MODE.MZ800;
-            } else {
-                self.status |= STATUS_MODE.MZ800;
-            }
         }
 
         pub inline fn isHires(self: *Self) bool {

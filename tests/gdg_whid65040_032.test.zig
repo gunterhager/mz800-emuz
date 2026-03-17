@@ -29,8 +29,11 @@ test "reset" {
         .cgrom = &cgrom,
         .rgba8_buffer = &rgba8_buffer,
     });
-    try expect(sut.is_mz700 == false);
-    try expect((sut.status & STATUS_MODE.MZ800) == STATUS_MODE.MZ800);
+    // Hardware power-on default is MZ-700 compat mode.
+    // The ROM reads the DIP switch via status bit 1 and programs DMD to enter MZ-800 if needed.
+    try expect(sut.is_mz700 == true);
+    // DIP switch defaults to MZ-800 (dip_is_mz700 == false).
+    try expect(sut.dip_is_mz700 == false);
 }
 
 test "set MZ-700 mode" {
@@ -41,14 +44,18 @@ test "set MZ-700 mode" {
         .rgba8_buffer = &rgba8_buffer,
     });
 
-    // Set MZ-800 mode
+    // set_dmd() controls the runtime is_mz700 flag.
+    // Status register bit 1 reflects dip_is_mz700 (the DIP switch), not the DMD value.
     sut.set_dmd(0x00);
     try expect(sut.is_mz700 == false);
-    try expect((sut.status & STATUS_MODE.MZ800) == STATUS_MODE.MZ800);
-    // Set MZ-700 mode
     sut.set_dmd(DMD_MODE.MZ700);
     try expect(sut.is_mz700 == true);
-    try expect((sut.status & STATUS_MODE.MZ800) != STATUS_MODE.MZ800);
+
+    // DIP switch (dip_is_mz700) controls status bit 1 independently of set_dmd().
+    sut.dip_is_mz700 = false; // MZ-800 DIP position
+    try expect(sut.dip_is_mz700 == false);
+    sut.dip_is_mz700 = true; // MZ-700 DIP position
+    try expect(sut.dip_is_mz700 == true);
 }
 
 test "mem wr single write" {

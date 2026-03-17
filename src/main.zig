@@ -296,6 +296,11 @@ fn uiDrawMenu() void {
             if (ig.igMenuItem("Soft Reset")) {
                 sys.reset(true);
             }
+            ig.igSeparator();
+            if (ig.igMenuItemEx("MZ-700 Mode", null, sys.preferred_is_mz700, true)) {
+                sys.preferred_is_mz700 = !sys.preferred_is_mz700;
+                sys.reset(false);
+            }
             ig.igEndMenu();
         }
         if (ig.igBeginMenu("Hardware")) {
