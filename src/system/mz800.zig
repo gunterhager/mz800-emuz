@@ -27,6 +27,7 @@ const audio = common.audio;
 const DisplayInfo = common.glue.DisplayInfo;
 const mzf = @import("mzf.zig");
 const MZF = mzf.Type();
+const CMT = @import("cmt.zig").CMT;
 
 /// Z80 bus definitions (0..35)
 const CPU_PINS = z80.Pins{
@@ -291,6 +292,8 @@ pub fn Type() type {
         unmapped_page: [Memory.PAGE_SIZE]u8,
         audio: Audio,
         audio_sample_tick: u64,
+        // CMT cassette tape emulation
+        cmt: CMT,
         /// Frame buffer for emulator display
         fb: [DISPLAY.FB_SIZE]u32 align(128),
 
@@ -326,10 +329,12 @@ pub fn Type() type {
                 .rom = initRoms(opts),
                 .audio = Audio.init(opts.audio),
                 .audio_sample_tick = @intFromFloat(frequencies.CLK0 / @as(f64, @floatFromInt(opts.audio.sample_rate))),
+                .cmt = CMT.init(),
                 .fb = std.mem.zeroes(@TypeOf(self.fb)),
                 .junk_page = std.mem.zeroes(@TypeOf(self.junk_page)),
                 .unmapped_page = [_]u8{0xFF} ** Memory.PAGE_SIZE,
             };
+            self.cmt.configure(@intFromFloat(frequencies.CLK0));
             // Hard reset
             self.reset(false);
         }
@@ -415,6 +420,8 @@ pub fn Type() type {
                 }
                 // Video tick
                 bus = self.videoTick(bus);
+                // CMT tick: advance tape position by one master clock tick
+                self.cmt.tick();
             }
             self.bus = bus;
             self.updateKeyboard(micro_seconds);
@@ -502,7 +509,26 @@ pub fn Type() type {
             } else {
                 bus &= ~ppi_pc7_mask;
             }
+            // Inject CMT RDATA onto PPI Port C bit 5 (PC5, bus bit 101).
+            // PC5 is an input: the ROM reads it to receive serial tape data.
+            const ppi_pc5_mask: Bus = @as(Bus, 1) << PPI_PINS.PC[5];
+            if (self.cmt.readBit()) {
+                bus |= ppi_pc5_mask;
+            } else {
+                bus &= ~ppi_pc5_mask;
+            }
+            // Inject CMT motor status onto PPI Port C bit 4 (PC4, bus bit 100).
+            // PC4 is an input: the ROM reads it to check whether the motor is running.
+            const ppi_pc4_mask: Bus = @as(Bus, 1) << PPI_PINS.PC[4];
+            if (self.cmt.motorStatus()) {
+                bus |= ppi_pc4_mask;
+            } else {
+                bus &= ~ppi_pc4_mask;
+            }
             bus = self.ppi.tick(bus);
+            // Read M-ON from PPI Port C bit 3 (PC3): motor on/off control (rising edge 0→1).
+            const m_on = (self.ppi.ports[2].output & (1 << 3)) != 0;
+            self.cmt.updateMotor(m_on);
             bus = self.ctc.tick(bus);
             // CTC OUT2 drives Z80 INT, gated by PPI Port C bit 2.
             // Interrupt fires only when both CTC2 OUT = 1 and PPI PC2 = 1.
@@ -630,6 +656,12 @@ pub fn Type() type {
 
         inline fn framebufferIndex(x: usize, y: usize) usize {
             return y * DISPLAY.FB_WIDTH + x;
+        }
+
+        /// Load a WAV file for CMT playback from a byte slice.
+        pub fn loadWav(self: *Self, data: []const u8) !void {
+            try self.cmt.loadWav(data);
+            self.cmt.configure(@intFromFloat(frequencies.CLK0));
         }
 
         /// Load an MZF file into memory, resets CPU and starts the loaded start address.
