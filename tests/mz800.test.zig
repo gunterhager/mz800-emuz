@@ -5,6 +5,9 @@ const expectApproxEqAbs = std.testing.expectApproxEqAbs;
 const mz800 = @import("system").mz800;
 const MZ800 = mz800.Type();
 const MEM_CONFIG = MZ800.MEM_CONFIG.MZ800;
+const video_consts = @import("system").video.video;
+// GDG STATUS_MODE.HSYNC = bit 5 (low-active: 0 = asserted, 1 = inactive)
+const sts_hsync_bit: u8 = 1 << 5;
 
 const content = struct {
     const rom1: u8 = 0xf1;
@@ -313,4 +316,55 @@ test "MZ700 bank switching" {
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkRAM(sut, 0xe000, 0x2000));
     try expectEqual(sut.vram_banked_in, false);
+}
+
+test "sts_Hsync asserts at h_tick=950" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+
+    // Place beam one tick before the assert trigger and ensure HSYNC is currently inactive.
+    sut.video.h_ticks = video_consts.screen.horizontal.sts_hsync_h_start - 1;
+    sut.gdg.status |= sts_hsync_bit;
+
+    // Advance 17 master ticks (1 µs), passing h_tick=950.
+    _ = sut.exec(1);
+
+    // HSYNC must be active (low-active: bit clear = asserted).
+    try expectEqual(@as(u8, 0), sut.gdg.status & sts_hsync_bit);
+}
+
+test "sts_Hsync deasserts at h_tick=1078" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+
+    // Place beam one tick before the deassert trigger and ensure HSYNC is currently active.
+    sut.video.h_ticks = video_consts.screen.horizontal.sts_hsync_h_end - 1;
+    sut.gdg.status &= ~sts_hsync_bit;
+
+    // Advance 17 master ticks (1 µs), passing h_tick=1078.
+    _ = sut.exec(1);
+
+    // HSYNC must be inactive (low-active: bit set = deasserted).
+    try expect(sut.gdg.status & sts_hsync_bit != 0);
+}
+
+test "sts_Hsync asserts during VBLANK" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+
+    // video.ticks=0 is in the VSYNC region (before video_enable_start ≈ 24994),
+    // so videoTickToFrameY() returns null — the beam is in VBLANK.
+    // The old code gated sts_Hsync updates inside the visible-area check, so it
+    // would have silently skipped the update here.
+    sut.video.ticks = 0;
+    sut.video.h_ticks = video_consts.screen.horizontal.sts_hsync_h_start - 1;
+    sut.gdg.status |= sts_hsync_bit;
+
+    _ = sut.exec(1);
+
+    // HSYNC must assert even on a non-visible (VBLANK) line.
+    try expectEqual(@as(u8, 0), sut.gdg.status & sts_hsync_bit);
 }

@@ -144,6 +144,13 @@ pub const video = struct {
             pub const video_enable_end = video_enable_start + video_enable;
 
             pub const line = hsync + back_porch + video_enable + front_porch;
+
+            // Real HSYNC and sts_Hsync timing within the line
+            // real_Hsync asserts at h_tick=950, deasserts at h_tick=1030 (80 ticks = hsync width)
+            // sts_Hsync asserts at h_tick=950, deasserts at h_tick=1078 (128 ticks)
+            pub const sts_hsync_h_start: comptime_int = 950;
+            pub const real_hsync_h_end: comptime_int = sts_hsync_h_start + hsync; // = 1030
+            pub const sts_hsync_h_end: comptime_int = sts_hsync_h_start + 128; // = 1078
         };
 
         pub const vertical = struct {
