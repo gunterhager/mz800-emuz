@@ -655,27 +655,28 @@ pub fn Type() type {
         fn mz700TranslateIOREQ(self: *Self, in_bus: Bus) Bus {
             var bus = in_bus;
             var io_addr: u16 = 0;
-            switch (bus & ABUS | RD | WR) {
+            // The bus stores the address in bits 8-23 (shifted left by 8 from the u16 value).
+            // Use getAddr() to extract it, then check RD/WR separately.
+            const addr = getAddr(bus);
+            const is_rd = (bus & RD) != 0;
+            const is_wr = (bus & WR) != 0;
+            switch (addr) {
                 // i8255
-                MEM_CONFIG.MZ700.IO_START | WR => io_addr = 0xd0,
-                MEM_CONFIG.MZ700.IO_START + 0x01 | RD => io_addr = 0xd1,
-                MEM_CONFIG.MZ700.IO_START + 0x02 | WR => io_addr = 0xd2,
-                MEM_CONFIG.MZ700.IO_START + 0x02 | RD => io_addr = 0xd2,
-                MEM_CONFIG.MZ700.IO_START + 0x03 | WR => io_addr = 0xd3,
+                MEM_CONFIG.MZ700.IO_START => if (is_wr) { io_addr = 0xd0; },
+                MEM_CONFIG.MZ700.IO_START + 0x01 => if (is_rd) { io_addr = 0xd1; },
+                MEM_CONFIG.MZ700.IO_START + 0x02 => io_addr = 0xd2,
+                MEM_CONFIG.MZ700.IO_START + 0x03 => if (is_wr) { io_addr = 0xd3; },
 
                 // i8253
-                MEM_CONFIG.MZ700.IO_START + 0x04 | WR => io_addr = 0xd4,
-                MEM_CONFIG.MZ700.IO_START + 0x04 | RD => io_addr = 0xd4,
-                MEM_CONFIG.MZ700.IO_START + 0x05 | WR => io_addr = 0xd5,
-                MEM_CONFIG.MZ700.IO_START + 0x05 | RD => io_addr = 0xd5,
-                MEM_CONFIG.MZ700.IO_START + 0x06 | WR => io_addr = 0xd6,
-                MEM_CONFIG.MZ700.IO_START + 0x06 | RD => io_addr = 0xd6,
-                MEM_CONFIG.MZ700.IO_START + 0x07 | WR => io_addr = 0xd7,
+                MEM_CONFIG.MZ700.IO_START + 0x04 => io_addr = 0xd4,
+                MEM_CONFIG.MZ700.IO_START + 0x05 => io_addr = 0xd5,
+                MEM_CONFIG.MZ700.IO_START + 0x06 => io_addr = 0xd6,
+                MEM_CONFIG.MZ700.IO_START + 0x07 => if (is_wr) { io_addr = 0xd7; },
 
-                // Implementation of MZ-700 0xe008 is a bit unclear
+                // 0xE008: write maps to GDG memory bank switch (0xE0 range via IORQ),
+                // read maps to GDG status register (0xCE).
                 // TODO: clarify MZ-700 write to 0xe008 (mem mapped IO)
-                MEM_CONFIG.MZ700.IO_START + 0x08 | WR => io_addr = 0xd8,
-                MEM_CONFIG.MZ700.IO_START + 0x08 | RD => io_addr = 0xce,
+                MEM_CONFIG.MZ700.IO_START + 0x08 => if (is_wr) { io_addr = 0xe0; } else if (is_rd) { io_addr = 0xce; },
 
                 else => {},
             }
@@ -697,16 +698,16 @@ pub fn Type() type {
             const addr = getAddr(bus) & 0xff;
 
             switch (addr) {
-                // Serial IO
-                0xb0...0xb3 => std.debug.panic("Serial IO not implemented", .{}),
+                // Serial IO (not implemented: return 0xFF on read, ignore writes)
+                0xb0...0xb3 => if ((bus & RD) != 0) { bus = setData(bus, 0xFF); },
                 // GDG WHID 65040-032, CRT controller
                 0xcc...0xcf => {},
                 // PPI i8255, keyboard and cassette driver
                 0xd0...0xd3 => bus |= PPI.CS,
                 // CTC i8253, programmable counter/timer
                 0xd4...0xd7 => bus |= CTC.CS,
-                // FDC, floppy disc controller
-                0xd8...0xdf => std.debug.panic("FDC not implemented", .{}),
+                // FDC, floppy disc controller (not implemented: return 0xFF on read, ignore writes)
+                0xd8...0xdf => if ((bus & RD) != 0) { bus = setData(bus, 0xFF); },
                 // GDG WHID 65040-032, memory bank switch
                 0xe0...0xe6 => self.updateMemoryMap(bus),
                 0xf0...0xf1 => {
@@ -719,8 +720,8 @@ pub fn Type() type {
                 },
                 // PSG SN 76489 AN, sound generator
                 0xf2 => bus |= PSG.CE,
-                // QDC, quick disk controller
-                0xf4...0xf7 => std.debug.panic("QDC not implemented", .{}),
+                // QDC, quick disk controller (not implemented: return 0xFF on read, ignore writes)
+                0xf4...0xf7 => if ((bus & RD) != 0) { bus = setData(bus, 0xFF); },
                 // PIO Z80 PIO, parallel I/O unit
                 0xfc...0xff => bus |= PIO.CE,
                 else => {},

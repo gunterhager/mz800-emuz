@@ -370,12 +370,72 @@ pub fn Type(comptime cfg: TypeConfig) type {
                         }
                     },
                     .MODE4 => {
-                        std.debug.panic("CTC MODE4 not implemented", .{});
-                        return bus;
+                        // Software Triggered Strobe: OUT starts HIGH, counts from N to 0,
+                        // then OUT pulses LOW for one CLK, returns HIGH, counter continues.
+                        // GATE enables/disables counting (like Mode 0).
+                        switch (self.state) {
+                            .countdown => {
+                                self.value -= 1;
+                                if (self.value == 0) {
+                                    bus = self.setOut(0, bus); // strobe pulse begins
+                                    self.state = .preset; // next tick: restore HIGH
+                                }
+                                return bus;
+                            },
+                            .preset => {
+                                bus = self.setOut(1, bus); // strobe pulse ends
+                                self.value = 0xFFFF;
+                                self.state = .blind_count;
+                                return bus;
+                            },
+                            .blind_count => {
+                                self.value -= 1;
+                                return bus;
+                            },
+                            .load_done => {
+                                bus = self.setOut(1, bus); // OUT HIGH after loading
+                                self.writeValue(self.preset_value);
+                                if (self.gate == 1) {
+                                    self.state = .countdown;
+                                } else {
+                                    self.state = .wait_gate_high;
+                                }
+                                return bus;
+                            },
+                            else => {},
+                        }
                     },
                     .MODE5 => {
-                        std.debug.panic("CTC MODE5 not implemented", .{});
-                        return bus;
+                        // Hardware Triggered Strobe: OUT starts HIGH, counts from N to 0
+                        // after a GATE rising edge, then OUT pulses LOW for one CLK, returns HIGH.
+                        // GATE low does not stop counting; a rising GATE edge retriggers.
+                        switch (self.state) {
+                            .countdown => {
+                                self.value -= 1;
+                                if (self.value == 0) {
+                                    bus = self.setOut(0, bus); // strobe pulse begins
+                                    self.state = .preset; // next tick: restore HIGH
+                                }
+                                return bus;
+                            },
+                            .preset => {
+                                bus = self.setOut(1, bus); // strobe pulse ends
+                                self.value = 0xFFFF;
+                                self.state = .blind_count;
+                                return bus;
+                            },
+                            .blind_count => {
+                                self.value -= 1;
+                                return bus;
+                            },
+                            .load_done => {
+                                bus = self.setOut(1, bus); // OUT HIGH after loading
+                                self.writeValue(self.preset_value);
+                                self.state = .wait_gate_high; // await GATE rising edge
+                                return bus;
+                            },
+                            else => {},
+                        }
                     },
                 }
 
@@ -441,10 +501,26 @@ pub fn Type(comptime cfg: TypeConfig) type {
                         }
                     },
                     .MODE4 => {
-                        std.debug.panic("CTC MODE4 not implemented", .{});
+                        // GATE enables/disables counting (low = inhibit, like Mode 0).
+                        if (self.gate == 0) {
+                            if (self.state == .countdown or self.state == .blind_count) {
+                                self.state = .wait_gate_high;
+                            }
+                        } else {
+                            if (self.state == .wait_gate_high) {
+                                self.state = if (self.out == 1) .countdown else .blind_count;
+                            }
+                        }
                     },
                     .MODE5 => {
-                        std.debug.panic("CTC MODE5 not implemented", .{});
+                        // GATE rising edge triggers/retriggers counting.
+                        // GATE low does not stop an in-progress count.
+                        if (self.gate == 1) {
+                            // Rising edge: reload and start counting.
+                            self.writeValue(self.preset_value);
+                            bus = self.setOut(1, bus);
+                            self.state = .countdown;
+                        }
                     },
                 }
                 return bus;
