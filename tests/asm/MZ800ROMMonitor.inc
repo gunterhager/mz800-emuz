@@ -2,35 +2,754 @@
 ; SHARP MZ-800 ROM Monitor 9Z-504M routines
 ;
 
+; ===========================================================================
+; Direct CALL subroutines (CALL address)
+; ===========================================================================
+
+; CALL_GETL
+; Reads one line of data from keyboard and stores it starting at the
+; address in DE. A carriage return code (0Dh) is appended at the end.
+; Maximum 80 characters. Characters are echoed to the display.
+; If SHIFT+BREAK is pressed, the BREAK code is stored at DE, then CR
+; at DE+1.
+; Input: DE = starting address of input buffer
+; Registers saved: All except AF
+defc CALL_GETL  = 00003h
+
 ; CALL_LETNL
-; Moves the cursor to the beginning of the next line. 
+; Moves the cursor to the beginning of the next line.
 ; Registers saved: All except AF
 defc CALL_LETNL = 00006h
 
+; CALL_NL
+; New line. Moves the cursor to the beginning of the next line.
+; Registers saved: All except AF
+defc CALL_NL    = 00009h
+
 ; CALL_PRNTS
-; Displays a space at the cursor position. 
+; Displays a space at the cursor position.
 ; Registers saved: All except AF
 defc CALL_PRNTS = 0000ch
 
+; CALL_PRNTT
+; Displays a TAB at the cursor position.
+; Registers saved: All except AF
+defc CALL_PRNTT = 0000fh
+
 ; CALL_PRNT
-; Displays the character corresponding to the ASCII code 
-; stored in the ACC at the cursor position. See Appendix J for
-; the ASCII codes. No character is displayed when code OD
-; (carriage return) or codes 11 to 16 (the cursor control codes)
-; are entered, but the corresponding function is still performed
-; (a carriage return for OD and cursor movement for 11 to 16).
+; Displays the character corresponding to the ASCII code
+; stored in the ACC at the cursor position. No character is displayed
+; when code 0Dh (carriage return) or codes 11h to 16h (cursor control
+; codes) are entered, but the corresponding function is still performed
+; (a carriage return for 0Dh and cursor movement for 11h to 16h).
+; Input: A = ASCII code of character to display
 ; Registers saved: All except AF
 defc CALL_PRNT  = 00012h
 
 ; CALL_MSG
-; Displays a message, starting at the position of the cursor. The 
-; starting address of the area in which the message is
-; stored must be loaded into the DE register before calling this
-; code (OD).
+; Displays a message, starting at the position of the cursor. The
+; starting address of the area in which the message is stored must be
+; loaded into the DE register before calling this subroutine, and the
+; message must end with a carriage return code (0Dh).
 ; The carriage return is not executed.
-; The cursor is moved if any cursor control codes (11 to 16) are
-; subroutine, and the message must end with a carriage return
+; The cursor is moved if any cursor control codes (11h to 16h) are
 ; included in the message.
+; Input: DE = starting address of message
 ; Registers saved: All except AF
 defc CALL_MSG   = 00015h
 
+; CALL_MSGX
+; RST 3 entry. Similar to CALL_MSG.
+; Input: DE = starting address of message
+defc CALL_MSGX  = 00018h
+
+; CALL_GETKY
+; Reads a character code (ASCII) from the keyboard. Returns 00h in
+; the ACC if no key is pressed. No key debounce processing. No echo
+; to the display.
+; Special key codes: DEL=60h, INST=61h, ALPHA=62h, BREAK=64h,
+; CR=66h, cursor keys=11h-16h.
+; Output: A = ASCII code (00h if no key pressed)
+; Registers saved: All except AF
+defc CALL_GETKY = 0001bh
+
+; CALL_BRKEY
+; Checks if the SHIFT and BREAK keys are both pressed simultaneously.
+; The Z flag is set when both are pressed, reset otherwise.
+; Output: ZF = 1 if SHIFT+BREAK pressed
+; Registers saved: All except AF
+defc CALL_BRKEY = 0001eh
+
+; CALL_WRINF
+; Writes header information to the cassette tape (CMT).
+; Registers saved: All except AF
+defc CALL_WRINF = 00021h
+
+; CALL_WRDAT
+; Writes data to the cassette tape (CMT).
+; Registers saved: All except AF
+defc CALL_WRDAT = 00024h
+
+; CALL_RDINF
+; Reads header information from the cassette tape (CMT).
+; Registers saved: All except AF
+defc CALL_RDINF = 00027h
+
+; CALL_RDDAT
+; Reads data from the cassette tape (CMT).
+; Registers saved: All except AF
+defc CALL_RDDAT = 0002ah
+
+; CALL_VERFY
+; Verifies data on the cassette tape (CMT) against memory.
+; Registers saved: All except AF
+defc CALL_VERFY = 0002dh
+
+; CALL_MELDY
+; Plays a tune according to music data stored at the address in DE.
+; Data format is the same as the BASIC MUSIC statement. The data must
+; end with 0Dh or C8h.
+; Input: DE = starting address of music data
+; Output: CF = 0 when tune completed, CF = 1 if interrupted by BREAK
+; Registers saved: All except AF
+defc CALL_MELDY = 00030h
+
+; CALL_TIMST
+; Sets and starts the built-in clock.
+; Input: A = 0 (AM) or 1 (PM)
+;        DE = 4-digit hex number representing time in seconds
+; Registers saved: All except AF
+defc CALL_TIMST = 00033h
+
+; CALL_TIMRD
+; Reads the built-in clock and returns the current time.
+; Output: A = 0 (AM) or 1 (PM)
+;         DE = 4-digit hex number representing time in seconds
+; Registers saved: All except AF and DE
+defc CALL_TIMRD = 0003bh
+
+; CALL_BELL
+; Briefly sounds a tone of la (approximately 880 Hz).
+; Registers saved: All
+defc CALL_BELL  = 0003eh
+
+; CALL_XTEMP
+; Sets the music tempo according to the tempo data in the ACC.
+; Input: A = tempo value (01h=slowest, 04h=middle, 07h=fastest)
+;        Values are binary, not ASCII.
+; Registers saved: All
+defc CALL_XTEMP = 00041h
+
+; CALL_MSTA
+; Generates a continuous sound of specified frequency.
+; Frequency = 895 kHz / nn', where nn' is a 2-byte number at
+; addresses 11A1h (low byte) and 11A2h (high byte).
+; Input: (11A1h) = low byte, (11A2h) = high byte of frequency divisor
+; Registers saved: BC and DE
+defc CALL_MSTA  = 00044h
+
+; CALL_MSTP
+; Stops the continuous sound generated by CALL_MSTA.
+; Registers saved: All except AF
+defc CALL_MSTP  = 00047h
+
+; ===========================================================================
+; Utility subroutines (non-vector table addresses)
+; ===========================================================================
+
+; CALL_ASC
+; Converts a hex nibble (lower 4 bits of ACC) to the corresponding
+; ASCII character ('0'-'9', 'A'-'F').
+; Input: A = hex nibble (lower 4 bits)
+; Output: A = ASCII character
+; Registers saved: All except AF
+defc CALL_ASC   = 003dah
+
+; CALL_HEX
+; Converts an ASCII character in ACC to the corresponding hex nibble
+; in the lower 4 bits of ACC.
+; Input: A = ASCII character ('0'-'9', 'A'-'F')
+; Output: A = hex value (lower 4 bits), CF = 0 if valid, CF = 1 if invalid
+; Registers saved: All except AF
+defc CALL_HEX   = 003f9h
+
+; CALL_HLHEX
+; Converts 4 ASCII characters (hex string) to a 16-bit hex value in HL.
+; Input: DE = address of 4-character ASCII hex string
+; Output: HL = 16-bit hex value, CF = 0 if success, CF = 1 if error
+; Registers saved: All except AF and HL
+defc CALL_HLHEX = 00410h
+
+; CALL_2HEX
+; Converts 2 ASCII characters (hex string) to an 8-bit hex value in ACC.
+; Input: DE = address of 2-character ASCII hex string
+; Output: A = 8-bit hex value, CF = 0 if success, CF = 1 if error
+; Registers saved: All except AF and DE
+defc CALL_2HEX  = 0041fh
+
+; CALL_QKEY
+; Blinks cursor to prompt for key input. When a key is pressed, the
+; display code is loaded into ACC and the routine returns.
+; Output: A = display code of pressed key
+; Registers saved: All except AF
+defc CALL_QKEY  = 00983h
+
+; CALL_QADCN
+; Converts ASCII codes to display codes.
+; Input: A = ASCII code
+; Output: A = display code
+; Registers saved: All except AF
+defc CALL_QADCN = 00889h
+
+; CALL_QDACN
+; Converts display codes to ASCII codes.
+; Input: A = display code
+; Output: A = ASCII code
+; Registers saved: All except AF
+defc CALL_QDACN = 00bceh
+
+; CALL_QBLNK
+; Detects the vertical blanking period. Returns when the vertical
+; blanking period is entered.
+; Registers saved: All
+defc CALL_QBLNK = 00da6h
+
+; CALL_QDPCT
+; Controls the display according to the control code in ACC.
+; Input: A = control code:
+;        C0h = Scrolling
+;        C1h = Cursor down
+;        C2h = Cursor up
+;        C3h = Cursor right
+;        C4h = Cursor left
+;        C5h = HOME
+;        C6h = CLR (clear screen)
+;        C7h = DEL
+;        C8h = INST
+;        C9h = ALPHA
+;        CDh = CR (carriage return)
+; Registers saved: All
+defc CALL_QDPCT = 00ddch
+
+; CALL_QPOINT
+; Loads the current cursor location into the HL register.
+; Output: HL = cursor location (binary address)
+; Registers saved: All except AF and HL
+defc CALL_QPOINT = 00fb1h
+
+; ===========================================================================
+; RST 3 (SVC) Monitor calls - called via RST 18h + function byte
+; ===========================================================================
+
+; SVC_MONOP (Function 00h)
+; Returns to the RAM monitor.
+defc SVC_MONOP  = 000h
+
+; SVC_CR1 (Function 01h)
+; Starts a new line independent of cursor position.
+; Registers saved: Primary registers only
+defc SVC_CR1    = 001h
+
+; SVC_CR2 (Function 02h)
+; Starts a new line if the cursor is not at the beginning of a line.
+; Registers saved: Primary register pairs only
+defc SVC_CR2    = 002h
+
+; SVC_CRT1C (Function 03h)
+; Outputs a character to the CRT. Control codes are executed.
+; Input: A = output data
+; Registers saved: Primary register pairs only
+defc SVC_CRT1C  = 003h
+
+; SVC_CRT1X (Function 04h)
+; Outputs a character to the CRT. Control codes are displayed
+; in reverse video instead of being executed.
+; Input: A = output data
+; Registers saved: Primary register pairs only
+defc SVC_CRT1X  = 004h
+
+; SVC_CRTMS (Function 05h)
+; Outputs a character string to the CRT (end code 00h).
+; Control codes are executed (same as SVC_CRT1C).
+; Input: DE = pointer to null-terminated string
+; Registers saved: Primary register pairs only
+defc SVC_CRTMS  = 005h
+
+; SVC_LPTOT (Function 06h)
+; Outputs a character to the printer without code conversion.
+; Input: A = output data
+; Registers saved: Primary register pairs only
+defc SVC_LPTOT  = 006h
+
+; SVC_LPT1C (Function 07h)
+; Outputs a character to the printer, converting code to MZ printer
+; format. Used by PRINT/P of BASIC.
+; Input: A = output data
+; Registers saved: Primary register pairs only
+defc SVC_LPT1C  = 007h
+
+; SVC_ANDCR (Function 08h)
+; Starts a new line on CRT or printer according to FILOUT (1091h).
+; FILOUT=0 -> CRT, FILOUT=1 -> Printer.
+; Registers saved: Primary register pairs only
+defc SVC_ANDCR  = 008h
+
+; SVC_AND1C (Function 09h)
+; Outputs a character to CRT or printer per FILOUT.
+; CRT: control codes executed (same as SVC_CRT1C).
+; Printer: same as SVC_LPT1C.
+; Input: A = output data
+; Registers saved: Primary register pairs only
+defc SVC_AND1C  = 009h
+
+; SVC_AND1CX (Function 0Ah)
+; Outputs a character to CRT or printer per FILOUT.
+; CRT: control codes displayed in reverse video (same as SVC_CRT1X).
+; Printer: same as PRINT/P.
+; Input: A = output data
+; Registers saved: Primary register pairs only
+defc SVC_AND1CX = 00ah
+
+; SVC_ANDMSG (Function 0Bh)
+; Outputs a string to CRT or printer per FILOUT (end code 00h).
+; CRT: control codes executed. Printer: same as SVC_LPT1C.
+; Input: DE = pointer to null-terminated string
+; Registers saved: Primary register pairs only
+defc SVC_ANDMSG = 00bh
+
+; SVC_GETL (Function 0Ch)
+; Inputs one line from keyboard, adds end code 00h.
+; Input: DE = buffer address
+; Output: CF = 1 if SHIFT+BREAK pressed
+; Registers saved: Primary register pairs except AF
+defc SVC_GETL   = 00ch
+
+; SVC_INKEY (Function 0Dh)
+; Inputs a character from the keyboard.
+; Input: A = 0 for real-time scan (GET), A = 1 for wait with cursor
+;        blink, A = FFh for single input if key held
+; Output: A = MZ ASCII code
+; Registers saved: Primary register pairs except AF
+defc SVC_INKEY  = 00dh
+
+; SVC_BREAK (Function 0Eh)
+; Detects SHIFT+BREAK key combination.
+; Output: ZF = 1 if SHIFT+BREAK pressed
+; Registers saved: Primary register pairs except AF
+defc SVC_BREAK  = 00eh
+
+; SVC_HALT (Function 0Fh)
+; Waits for SPACE key if pressed. If SHIFT+BREAK is pressed,
+; transfers control to the ERRORP address (004Fh).
+; Registers saved: Primary register pairs except AF
+defc SVC_HALT   = 00fh
+
+; SVC_DI (Function 10h)
+; Stops spooling or music, inhibits interrupt.
+; Registers saved: Primary register pairs except AF
+defc SVC_DI     = 010h
+
+; SVC_EI (Function 11h)
+; Starts spooling or enables interrupt.
+; Registers saved: Primary register pairs except AF
+defc SVC_EI     = 011h
+
+; SVC_COUNT (Function 17h)
+; Counts characters in a null-terminated string (end code 00h).
+; Input: DE = pointer to string
+; Output: A = length of string
+; Registers saved: Primary register pairs except AF
+defc SVC_COUNT  = 017h
+
+; SVC_ERRX (Function 18h)
+; Displays an error message. If bit 7 of ACC is set, also displays
+; the device name.
+; Input: A = error code
+; Registers saved: Primary register pairs only
+defc SVC_ERRX   = 018h
+
+; SVC_DEVNM (Function 1Ch)
+; Interprets and specifies the device name.
+; Input: DE = pointer to device name string, B = length
+; Output: HL = pointer past end of name, DE = device table address,
+;         A = device ID/unit number
+defc SVC_DEVNM  = 01ch
+
+; SVC_DEVFN (Function 20h)
+; Interprets device name and file name.
+; Input: DE = pointer to device+file name string
+defc SVC_DEVFN  = 020h
+
+; SVC_LUCHK (Function 2Eh)
+; Checks whether a logical number is defined (file opened).
+; Input: A = logical number
+; Output: A = 1 (read), 2 (write), or 3 (read/write)
+;         CF = 1 if not opened
+; Registers saved: Primary registers except AF
+defc SVC_LUCHK  = 02eh
+
+; SVC_LOPEN (Function 2Fh)
+; Opens files not divided into blocks (e.g. object files).
+; Requires SVC_DEVFN to be called first.
+defc SVC_LOPEN  = 02fh
+
+; SVC_LOADF (Function 30h)
+; Loads non-blocked files (object files).
+; Requires SVC_DEVFN + SVC_LOPEN to be called first.
+; Input: HL = loading address
+defc SVC_LOADF  = 030h
+
+; SVC_SAVEF (Function 31h)
+; Saves non-blocked files.
+; Requires SVC_DEVFN to be called first.
+; Input: DE = start address of data
+;        ELMD20 (1014h) = file size
+;        ELMD22 (1016h) = load address
+;        ELMD24 (1018h) = execution address
+defc SVC_SAVEF  = 031h
+
+; SVC_VRFYF (Function 32h)
+; Verifies memory against a non-blocked file.
+; Requires SVC_DEVFN + SVC_LOPEN to be called first.
+defc SVC_VRFYF  = 032h
+
+; SVC_RWOPN (Function 33h)
+; Opens blocked files (source/ASCII files) for read or write.
+; Requires SVC_DEVFN to be called first.
+; ZRWX (1043h) = 1 for read, 2 for write.
+; Registers saved: Primary register pairs except AF
+defc SVC_RWOPN  = 033h
+
+; SVC_INMSG (Function 35h)
+; Inputs one line from a file opened with SVC_RWOPN.
+; Input: DE = input buffer address
+; Output: B = input size, CF = 1 if EOF
+; Registers saved: DE, HL
+defc SVC_INMSG  = 035h
+
+; SVC_PRSTR (Function 37h)
+; Writes specified bytes to a write-opened file (via SVC_RWOPN).
+; Input: DE = data address, B = size in bytes
+; Registers saved: Primary register pairs except AF
+defc SVC_PRSTR  = 037h
+
+; SVC_CLKL (Function 38h)
+; Closes or kills opened files.
+; Input: A = logical number (0 = all), B = 0 for kill, B != 0 for close
+; Registers saved: Primary register pairs except AF
+defc SVC_CLKL   = 038h
+
+; SVC_DIR (Function 39h)
+; Displays or prints directory. Requires SVC_DEVNM to be called first.
+; Input: A = 0 (read dir into buffer), A = 88h (output to CRT),
+;        A = 89h (output to printer)
+; Registers saved: Primary register pairs except AF
+defc SVC_DIR    = 039h
+
+; SVC_SETDF (Function 3Ah)
+; Sets the default device.
+; Input: DE = device table address, A = device ID (from SVC_DEVNM output)
+; Registers saved: Primary register pairs only
+defc SVC_SETDF  = 03ah
+
+; SVC_FINIT (Function 3Ch)
+; Initializes the I/O handler in monitor (used by INIT statement of BASIC).
+; Requires SVC_DEVNM to be called first.
+defc SVC_FINIT  = 03ch
+
+; SVC_ERCVR (Function 43h)
+; Performs error recovery. Stops motor of MZ disk or floppy disk.
+defc SVC_ERCVR  = 043h
+
+; ===========================================================================
+; Monitor variables and work area addresses
+; ===========================================================================
+
+; SYSSTA - Hot start address of utilities using this monitor
+defc MON_SYSSTA  = 00040h
+
+; ERRORP - Address of error handling routine
+defc MON_ERRORP  = 0004fh
+
+; ELMD - File mode
+; 1=Object, 2=BASIC text, 3=Source, 4=Relocatable
+defc MON_ELMD    = 01000h
+
+; ELMD1 - File name (up to 16 chars + 0Dh end mark)
+defc MON_ELMD1   = 01001h
+
+; ELMD20 - File size in bytes
+defc MON_ELMD20  = 01014h
+
+; ELMD22 - Load address
+defc MON_ELMD22  = 01016h
+
+; ELMD24 - Execution address
+defc MON_ELMD24  = 01018h
+
+; ZLOG - Logical number
+defc MON_ZLOG    = 01042h
+
+; ZRWX - File open type (1=Read, 2=Write)
+defc MON_ZRWX    = 01043h
+
+; TEXTST - Starting address of text area
+defc MON_TEXTST  = 01070h
+
+; POOL - Starting address of work area
+defc MON_POOL    = 01072h
+
+; VARST - Starting address of variable area
+defc MON_VARST   = 01074h
+
+; TMPEND - Ending address of temporary area
+defc MON_TMPEND  = 0107ah
+
+; MEMLMT - Ending address of memory area used by monitor
+defc MON_MEMLMT  = 0107eh
+
+; FILOUT - Output device: 0=CRT, 1=Printer
+defc MON_FILOUT  = 01091h
+
+; ---------------------------------------------------------------------------
+; Interrupt vector (RST 38h / IM1)
+; ---------------------------------------------------------------------------
+
+; INTVEC - RAM interrupt vector (3 bytes: JP opcode + 16-bit address)
+; RST 38h at $0038 jumps here. Patched at cold start to point to INT_HANDLER.
+defc MON_INTVEC   = 01038h   ; JP opcode byte
+defc MON_INTVEC_A = 01039h   ; Target address (16-bit, low byte first)
+
+; ---------------------------------------------------------------------------
+; File information block (ELMD) - already defined above at $1000-$1018
+; Additional logical file state
+; ---------------------------------------------------------------------------
+
+; ZSAVE - Saved address (used by plotter for error recovery vector)
+defc MON_ZSAVE    = 01044h
+
+; STRST - Starting address of string area
+defc MON_STRST    = 0106eh
+
+; ---------------------------------------------------------------------------
+; Printer / plotter variables ($108F-$109D) - ROM2
+; ---------------------------------------------------------------------------
+
+; PRTFLG - Printer online/ready flag
+defc MON_PRTFLG   = 0108fh
+
+; FILOUT - Output device: 0=CRT, 1=Printer (already defined above)
+; defc MON_FILOUT  = 01091h
+
+; PRTMOD - Printer mode/capability bitmask
+defc MON_PRTMOD   = 01092h
+
+; PRTCOL - Printer color/pen number
+defc MON_PRTCOL   = 01093h
+
+; PRTPCH - Printer character pitch/size
+defc MON_PRTPCH   = 01094h
+
+; PRTPOS - Printer column position counter
+defc MON_PRTPOS   = 01095h
+
+; PRTTYP - Printer type (1 = specific plotter model)
+defc MON_PRTTYP   = 01097h
+
+; PRTSTF - Printer status flags
+defc MON_PRTSTF   = 01098h
+
+; PRTPRT - Printer port configuration (16-bit BC value)
+defc MON_PRTPRT   = 0109dh
+
+; ---------------------------------------------------------------------------
+; Stack and CMT header buffer area ($10EE-$110A)
+; ---------------------------------------------------------------------------
+
+; QDSTK - Stack pointer for QD/FDC routines
+defc MON_QDSTK    = 010eeh
+
+; CMTHDR - CMT 128-byte header buffer base / stack init value
+; Stack pointer is initialized to $10F0 (grows downward).
+; Header buffer starts at $10F0 (grows upward, 128 bytes).
+defc MON_CMTHDR   = 010f0h
+
+; CMTFNM - CMT header: filename field (up to 16 chars + $0D terminator)
+defc MON_CMTFNM   = 010f1h
+
+; CMTFSZ - CMT header: file size (16-bit)
+defc MON_CMTFSZ   = 01102h
+
+; CMTFAD - CMT header: load/data address (16-bit)
+defc MON_CMTFAD   = 01104h
+
+; CMTFEX - CMT header: execution address (16-bit)
+defc MON_CMTFEX   = 01106h
+
+; CMTFCK - CMT header: checksum/end address (16-bit, used by FDC)
+defc MON_CMTFCK   = 01108h
+
+; CMTFTM - CMT header: temporary BC storage during FDC operations
+defc MON_CMTFTM   = 0110ah
+
+; ---------------------------------------------------------------------------
+; Quick Disk (QD) variables ($1130-$1148) - ROM2 only
+; ---------------------------------------------------------------------------
+
+; QDOP - QD operation code
+; 1=status, 2=format, 3=read, 4=write, 5=close, 6=special
+defc MON_QDOP     = 01130h
+
+; QDRW - QD read/write direction flag (0=read, $FF=write)
+defc MON_QDRW     = 01131h
+
+; QDBUF - QD buffer/data pointer address (16-bit)
+defc MON_QDBUF    = 01132h
+
+; QDLEN - QD data size / transfer length (16-bit)
+defc MON_QDLEN    = 01134h
+
+; QDEXE - QD execution/start address (16-bit)
+defc MON_QDEXE    = 01136h
+
+; QDWSZ - QD data size for write (16-bit)
+defc MON_QDWSZ    = 01138h
+
+; QDFLG - QD state/copy flag (16-bit)
+; 0=normal, 1=load after read, 2=copy mode
+defc MON_QDFLG    = 0113ah
+
+; QDSRC - QD file search counter (max $21)
+defc MON_QDSRC    = 0113ch
+
+; QDSEC - QD current sector number
+defc MON_QDSEC    = 0113dh
+
+; QDSYN - QD timing/sync state
+defc MON_QDSYN    = 0113eh
+
+; QDPRE - QD previous sector / retry value
+defc MON_QDPRE    = 0113fh
+
+; QDSAV - QD saved sector position
+defc MON_QDSAV    = 01140h
+
+; QDWPD - QD write-pending flag
+defc MON_QDWPD    = 01141h
+
+; QDTOT - QD total sector count on disk
+defc MON_QDTOT    = 01142h
+
+; QDNXT - QD next sector number (= QDTOT + 1)
+defc MON_QDNXT    = 01143h
+
+; QDMTR - QD motor running flag (0=stopped, 5=running)
+defc MON_QDMTR    = 01144h
+
+; QDRTY - QD retry counter (initialized to 5)
+defc MON_QDRTY    = 01145h
+
+; QDSTF - QD status flags (bit 3 = sync needed)
+defc MON_QDSTF    = 01147h
+
+; QDSP  - QD saved stack pointer (16-bit)
+defc MON_QDSP     = 01148h
+
+; ---------------------------------------------------------------------------
+; Display / cursor variables ($1170-$1194)
+; ---------------------------------------------------------------------------
+
+; DSPMOD - Display mode flags
+; Bit 0: MZ-700 compatibility mode
+; Bit 1: MZ-800 80-column mode
+defc MON_DSPMOD   = 01170h
+
+; CURPOS - Cursor position (16-bit: L=column 0-39/79, H=row 0-24)
+defc MON_CURPOS   = 01171h
+
+; CURY   - Cursor Y position (row index into scroll table)
+defc MON_CURY     = 01172h
+
+; SCRTBL - Scroll region table (27 bytes)
+; Tracks line wrapping/scroll state per display row.
+defc MON_SCRTBL   = 01173h
+
+; CURCHR - Saved cursor character
+; Character that was under the cursor before cursor overlay was drawn.
+defc MON_CURCHR   = 0118eh
+
+; CURDSP - Cursor display character
+; $EF = block cursor (MZ-700 mode)
+; $FF = inverse block cursor (MZ-800 mode)
+defc MON_CURDSP   = 01192h
+
+; COLCNT - Column counter for print routines (LETNL/NL/PRNT)
+; Tracks current print column; wraps at 80 ($50).
+defc MON_COLCNT   = 01194h
+
+; ---------------------------------------------------------------------------
+; CMT (Cassette Tape) work variables ($1195-$119C)
+; ---------------------------------------------------------------------------
+
+; CMTSYN - CMT sync parameters (16-bit: H=long pulse count, L=short pulse)
+defc MON_CMTSYN   = 01195h
+
+; CMTWCK - CMT write checksum (16-bit)
+defc MON_CMTWCK   = 01197h
+
+; CMTVCK - CMT verify checksum (16-bit)
+defc MON_CMTVCK   = 01199h
+
+; AMPM   - AM/PM flag for clock (0=AM, 1=PM)
+; Toggled by the interrupt handler.
+defc MON_AMPM     = 0119bh
+
+; TMRST  - Timer/tick counter state
+; $F0 = timer active. Used to decide whether to re-enable interrupts after CMT ops.
+defc MON_TMRST    = 0119ch
+
+; ---------------------------------------------------------------------------
+; Monitor state variables ($119D-$11A2)
+; ---------------------------------------------------------------------------
+
+; BNKFLG - Bank flag
+; Bit 0: 1 = ROM2 present (use FDC/QD), 0 = CMT only
+defc MON_BNKFLG   = 0119dh
+
+; TEMPO  - Music tempo value (internal: 8 - user_tempo, so $04 = middle)
+defc MON_TEMPO    = 0119eh
+
+; MUSCMD - Music articulation mode
+; 1=staccato, 2=normal, 3=legato
+defc MON_MUSCMD   = 011a0h
+
+; MSTA frequency divisor addresses
+defc MON_MSTA_LO = 011a1h   ; Low byte of frequency divisor
+defc MON_MSTA_HI = 011a2h   ; High byte of frequency divisor
+
+; ---------------------------------------------------------------------------
+; Input / command buffer area ($11A3+)
+; ---------------------------------------------------------------------------
+
+; CMDBUF - Command/keyboard input buffer start
+; Used by GETL for line input and monitor command parsing.
+defc MON_CMDBUF   = 011a3h
+
+; CMDBF1 - Second byte of input buffer
+; Used for QD filename comparison in ROM2.
+defc MON_CMDBF1   = 011a4h
+
+; PLTADR - Plotter address/parameter (16-bit)
+defc MON_PLTADR   = 011aah
+
+; PLTMOD - Plotter/printer mode flag
+defc MON_PLTMOD   = 011ach
+
+; CMDBF2 - Secondary buffer offset (used in FDC command processing)
+defc MON_CMDBF2   = 011adh
+
+; PLTBF1 - Plotter data buffer 1
+defc MON_PLTBF1   = 011b4h
+
+; PLTBF2 - Plotter data buffer 2
+defc MON_PLTBF2   = 011c4h
