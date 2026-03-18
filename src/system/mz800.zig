@@ -395,22 +395,8 @@ pub fn Type() type {
                     bus ^= CTC_CLK0;
                     bus = self.ctc.setCLK0(bus);
                 }
-                // CTC CLK1 tick, CTC counters count only falling edge so we need to
-                // toggle the signal at clock divider / 2
-                if ((self.clock.ticks % clock_dividers.HSYN) == (clock_dividers.HSYN / 2)) {
-                    // Toggle CLK1
-                    bus ^= CTC_CLK1;
-                    bus = self.ctc.setCLK1(bus);
-                    // CLK2 is driven by OUT1 of Counter 1.
-                    // Mirror counter[1].out onto the CLK2 bus pin;
-                    // Counter.setCLK only ticks counter 2 on a 1→0 falling edge.
-                    if (self.ctc.counter[1].out == 0) {
-                        bus &= ~CTC_CLK2;
-                    } else {
-                        bus |= CTC_CLK2;
-                    }
-                    bus = self.ctc.setCLK2(bus);
-                }
+                // CLK1 (real HSYNC) is now driven from videoTick() based on h_ticks,
+                // asserting at h_tick=950 and deasserting at h_tick=1030 each line.
                 // TEMPO tick (cursor blink oscillator)
                 if ((self.clock.ticks % (clock_dividers.TEMPO / 2)) == 0) {
                     self.gdg.status ^= GDG.STATUS_MODE.TEMPO;
@@ -577,7 +563,8 @@ pub fn Type() type {
             return bus;
         }
 
-        fn videoTick(self: *Self, bus: Bus) Bus {
+        fn videoTick(self: *Self, in_bus: Bus) Bus {
+            var bus = in_bus;
             self.video.ticks += 1;
             if (self.video.ticks == video.screen.frame) {
                 self.video.ticks = 0;
@@ -591,22 +578,45 @@ pub fn Type() type {
                 }
             }
 
+            // Real HSYNC signal (CLK1 of CTC): assert at h_tick=950, deassert at h_tick=1030.
+            // Driven directly from h_ticks so it fires on every line, including during VBLANK.
+            if (self.video.h_ticks == video.screen.horizontal.sts_hsync_h_start) {
+                bus &= ~CTC_CLK1;
+                bus = self.ctc.setCLK1(bus);
+                // Update CLK2 from OUT1 of Counter 1
+                if (self.ctc.counter[1].out == 0) {
+                    bus &= ~CTC_CLK2;
+                } else {
+                    bus |= CTC_CLK2;
+                }
+                bus = self.ctc.setCLK2(bus);
+            }
+            if (self.video.h_ticks == video.screen.horizontal.real_hsync_h_end) {
+                bus |= CTC_CLK1;
+                bus = self.ctc.setCLK1(bus);
+                if (self.ctc.counter[1].out == 0) {
+                    bus &= ~CTC_CLK2;
+                } else {
+                    bus |= CTC_CLK2;
+                }
+                bus = self.ctc.setCLK2(bus);
+            }
+
+            // sts_Hsync status bit: asserts at h_tick=950, deasserts at h_tick=1078.
+            // Placed outside the visible-area check so it updates on every line.
+            if (self.video.h_ticks == video.screen.horizontal.sts_hsync_h_start) {
+                self.gdg.status &= ~GDG.STATUS_MODE.HSYNC;
+            }
+            if (self.video.h_ticks == video.screen.horizontal.sts_hsync_h_end) {
+                self.gdg.status |= GDG.STATUS_MODE.HSYNC;
+            }
+
             // Convert to coordinates if beam is in visible area
             if (videoHTickToFrameX(self.video.h_ticks)) |x| {
                 if (videoTickToFrameY(self.video.ticks)) |y| {
                     const index = framebufferIndex(x, y);
 
                     // Video status updates
-                    // sts_Hsync: asserts at h_tick=950, deasserts at h_tick=1078 (128px duration).
-                    // In frame-x coordinates: x = h_tick - video_enable_start (186).
-                    // Start of HSYNC status (h_tick=950 → x=764)
-                    if (x == 950 - video.screen.horizontal.video_enable_start) {
-                        self.gdg.status &= ~GDG.STATUS_MODE.HSYNC;
-                    }
-                    // End of HSYNC status (h_tick=1078 → x=892)
-                    if (x == 1078 - video.screen.horizontal.video_enable_start) {
-                        self.gdg.status |= GDG.STATUS_MODE.HSYNC;
-                    }
                     // Start of HBLANK
                     if (x == video.border.left + video.canvas.width) {
                         self.gdg.status &= ~GDG.STATUS_MODE.HBLANK;
