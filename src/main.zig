@@ -1,6 +1,6 @@
 const std = @import("std");
 const Io = std.Io;
-const GeneralPurposeAllocator = std.heap.GeneralPurposeAllocator;
+const DebugAllocator = std.heap.DebugAllocator(.{});
 const sokol = @import("sokol");
 const sapp = sokol.app;
 const slog = sokol.log;
@@ -166,7 +166,7 @@ const UI_INTEL8253_Pins = [_]UI_CHIP.Pin{
 const UI_GDG = ui_intern.ui_gdg_whid65040_032.Type(.{ .bus = mz800.Bus, .gdg = mz800.GDG });
 const UI_GDG_Pins = [_]UI_CHIP.Pin{};
 var sys: MZ800 = undefined;
-var gpa = GeneralPurposeAllocator(.{}){};
+var gpa: DebugAllocator = .init;
 
 var ui_z80: UI_Z80 = undefined;
 var ui_z80pio: UI_Z80PIO = undefined;
@@ -365,16 +365,55 @@ export fn input(ev: ?*const sapp.Event) void {
 fn handleDroppedFiles() void {
     const num_of_files: usize = @intCast(sapp.getNumDroppedFiles());
     std.debug.print("🚨 Files dropped: {}\n", .{num_of_files});
-    var obj_file: MZF = undefined;
     const path = sapp.getDroppedFilePath(0);
     std.debug.print("🚨 Loading file: {s}\n", .{path});
-    obj_file.load(.cwd(), path) catch |err| {
-        std.debug.print("Error loading file '{s}': {}\n", .{ path, err });
+    if (endsWithInsensitive(std.mem.sliceTo(path, 0), ".wav")) {
+        loadWavFile(path);
+    } else {
+        loadMzfFile(path);
+    }
+}
+
+fn endsWithInsensitive(s: []const u8, suffix: []const u8) bool {
+    if (s.len < suffix.len) return false;
+    return std.ascii.eqlIgnoreCase(s[s.len - suffix.len ..], suffix);
+}
+
+fn loadMzfFile(path: [*:0]const u8) void {
+    var obj_file: MZF = undefined;
+    obj_file.load(.cwd(), std.mem.sliceTo(path, 0)) catch |err| {
+        std.debug.print("🚨 Error loading MZF '{s}': {}\n", .{ path, err });
+        return;
     };
     std.debug.print("🚨 Name: {s}\n", .{obj_file.display_name});
     std.debug.print("🚨 Loading address: 0x{x:0>4}\n", .{obj_file.header.loading_address});
     std.debug.print("🚨 Starting address: 0x{x:0>4}\n", .{obj_file.header.start_address});
     sys.load(obj_file);
+}
+
+fn loadWavFile(path: [*:0]const u8) void {
+    const io = std.Io.Threaded.global_single_threaded.io();
+    const file = std.Io.Dir.cwd().openFile(io, std.mem.sliceTo(path, 0), .{}) catch |err| {
+        std.debug.print("🚨 Error opening WAV '{s}': {}\n", .{ path, err });
+        return;
+    };
+    defer file.close(io);
+    const allocator = gpa.allocator();
+    // Allocate a generous read buffer; CMT caps internally at 2 MB
+    const max_read = 3 * 1024 * 1024;
+    const buf = allocator.alloc(u8, max_read) catch |err| {
+        std.debug.print("🚨 Error allocating WAV buffer: {}\n", .{err});
+        return;
+    };
+    defer allocator.free(buf);
+    const bytes_read = file.readPositionalAll(io, buf, 0) catch |err| {
+        std.debug.print("🚨 Error reading WAV '{s}': {}\n", .{ path, err });
+        return;
+    };
+    sys.loadWav(buf[0..bytes_read]) catch |err| {
+        std.debug.print("🚨 Error parsing WAV '{s}': {}\n", .{ path, err });
+        return;
+    };
 }
 
 pub fn main() void {

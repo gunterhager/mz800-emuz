@@ -27,6 +27,7 @@ const audio = common.audio;
 const DisplayInfo = common.glue.DisplayInfo;
 const mzf = @import("mzf.zig");
 const MZF = mzf.Type();
+const CMT = @import("cmt.zig").CMT;
 
 /// Z80 bus definitions (0..35)
 const CPU_PINS = z80.Pins{
@@ -268,6 +269,9 @@ pub fn Type() type {
             // Vertical BLaNk signal: 1 = inactive (during canvas display), 0 = active (during blanking).
             // Wired to PPI Port C bit 7 (PC7) and PIO Port A bit 5 (PA5).
             vbln: u1 = 0,
+            // 556 cursor oscillator output: toggles at clock_dividers.CURSOR rate.
+            // Wired to PPI Port C bit 6 (PC6).
+            cursor_osc: u1 = 0,
         } = .{},
 
         // Internal clock for the emulator. Counts CLK0 ticks from emulator boot.
@@ -291,6 +295,8 @@ pub fn Type() type {
         unmapped_page: [Memory.PAGE_SIZE]u8,
         audio: Audio,
         audio_sample_tick: u64,
+        // CMT cassette tape emulation
+        cmt: CMT,
         /// Frame buffer for emulator display
         fb: [DISPLAY.FB_SIZE]u32 align(128),
 
@@ -326,10 +332,12 @@ pub fn Type() type {
                 .rom = initRoms(opts),
                 .audio = Audio.init(opts.audio),
                 .audio_sample_tick = @intFromFloat(frequencies.CLK0 / @as(f64, @floatFromInt(opts.audio.sample_rate))),
+                .cmt = CMT.init(),
                 .fb = std.mem.zeroes(@TypeOf(self.fb)),
                 .junk_page = std.mem.zeroes(@TypeOf(self.junk_page)),
                 .unmapped_page = [_]u8{0xFF} ** Memory.PAGE_SIZE,
             };
+            self.cmt.configure(@intFromFloat(frequencies.CLK0));
             // Hard reset
             self.reset(false);
         }
@@ -405,16 +413,25 @@ pub fn Type() type {
                 if ((self.clock.ticks % (clock_dividers.TEMPO / 2)) == 0) {
                     self.gdg.status ^= GDG.STATUS_MODE.TEMPO;
                 }
+                // 556 cursor oscillator tick → PC6
+                if ((self.clock.ticks % (clock_dividers.CURSOR / 2)) == 0) {
+                    self.video.cursor_osc ^= 1;
+                }
                 // PSG tick (~221.7 kHz)
                 if ((self.clock.ticks % clock_dividers.PSG_CLK) == 0) {
                     self.psg.step();
                 }
                 // Audio sample tick (at host sample rate)
                 if ((self.clock.ticks % self.audio_sample_tick) == 0) {
-                    self.audio.put(self.psg.sample());
+                    // Mix PSG output with 8253 Ch.0 square wave, gated by SMSK (PC0).
+                    const smsk = (self.ppi.ports[2].output & (1 << 0)) != 0;
+                    const pit_out0: f32 = if (smsk and self.ctc.counter[0].out == 1) 1.0 else 0.0;
+                    self.audio.put(self.psg.sample() + pit_out0);
                 }
                 // Video tick
                 bus = self.videoTick(bus);
+                // CMT tick: advance tape position by one master clock tick
+                self.cmt.tick();
             }
             self.bus = bus;
             self.updateKeyboard(micro_seconds);
@@ -502,13 +519,49 @@ pub fn Type() type {
             } else {
                 bus &= ~ppi_pc7_mask;
             }
+            // Inject 556 cursor oscillator onto PPI Port C bit 6 (PC6, bus bit 102).
+            const ppi_pc6_mask: Bus = @as(Bus, 1) << PPI_PINS.PC[6];
+            if (self.video.cursor_osc == 1) {
+                bus |= ppi_pc6_mask;
+            } else {
+                bus &= ~ppi_pc6_mask;
+            }
+            // Inject CMT RDATA onto PPI Port C bit 5 (PC5, bus bit 101).
+            // PC5 is an input: the ROM reads it to receive serial tape data.
+            const ppi_pc5_mask: Bus = @as(Bus, 1) << PPI_PINS.PC[5];
+            if (self.cmt.readBit()) {
+                bus |= ppi_pc5_mask;
+            } else {
+                bus &= ~ppi_pc5_mask;
+            }
+            // Inject CMT motor status onto PPI Port C bit 4 (PC4, bus bit 100).
+            // PC4 is an input: the ROM reads it to check whether the motor is running.
+            const ppi_pc4_mask: Bus = @as(Bus, 1) << PPI_PINS.PC[4];
+            if (self.cmt.motorStatus()) {
+                bus |= ppi_pc4_mask;
+            } else {
+                bus &= ~ppi_pc4_mask;
+            }
             bus = self.ppi.tick(bus);
+            // Read M-ON from PPI Port C bit 3 (PC3): motor on/off control (rising edge 0→1).
+            const m_on = (self.ppi.ports[2].output & (1 << 3)) != 0;
+            self.cmt.updateMotor(m_on);
+            // Read WDATA from PPI Port C bit 1 (PC1): serial data output to tape recorder.
+            const wdata = (self.ppi.ports[2].output & (1 << 1)) != 0;
+            self.cmt.writeData(wdata);
             bus = self.ctc.tick(bus);
-            // CTC OUT2 drives Z80 INT, gated by PPI Port C bit 2.
-            // Interrupt fires only when both CTC2 OUT = 1 and PPI PC2 = 1.
+            // 8253 Ch.2 OUT drives Z80 INT, gated by PPI Port C bit 2 (INTMSK).
+            // Interrupt fires only when both OUT2 = 1 and PC2 = 1.
             const ctc_out2 = (bus & (@as(Bus, 1) << CTC_PINS.OUT2)) != 0;
             const ppi_pc2 = (self.ppi.ports[2].output & (1 << 2)) != 0;
             if (ctc_out2 and ppi_pc2) {
+                bus |= @as(Bus, 1) << CPU_PINS.INT;
+            }
+            // 8253 Ch.0 OUT drives Z80 INT, gated by PPI Port C bit 0 (SMSK).
+            // Interrupt fires only when both OUT0 = 1 and PC0 = 1.
+            const ctc_out0 = (bus & (@as(Bus, 1) << CTC_PINS.OUT0)) != 0;
+            const ppi_pc0 = (self.ppi.ports[2].output & (1 << 0)) != 0;
+            if (ctc_out0 and ppi_pc0) {
                 bus |= @as(Bus, 1) << CPU_PINS.INT;
             }
             bus = self.psg.tick(bus);
@@ -630,6 +683,12 @@ pub fn Type() type {
 
         inline fn framebufferIndex(x: usize, y: usize) usize {
             return y * DISPLAY.FB_WIDTH + x;
+        }
+
+        /// Load a WAV file for CMT playback from a byte slice.
+        pub fn loadWav(self: *Self, data: []const u8) !void {
+            try self.cmt.loadWav(data);
+            self.cmt.configure(@intFromFloat(frequencies.CLK0));
         }
 
         /// Load an MZF file into memory, resets CPU and starts the loaded start address.
