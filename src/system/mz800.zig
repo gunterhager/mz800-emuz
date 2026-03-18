@@ -367,13 +367,15 @@ pub fn Type() type {
             self.psg.reset();
             self.cpu.reset();
             self.keyboard_matrix = [_]u8{0xFF} ** 10;
-            // GATE pins are pulled high on real MZ-800 hardware.
-            // Set gate directly to avoid triggering state machine transitions
+            // GATE1 and GATE2 are pulled high on real MZ-800 hardware.
+            // Set gates directly to avoid triggering state machine transitions
             // before the ROM programs the counters.
-            self.bus |= CTC_GATE0 | CTC_GATE1 | CTC_GATE2;
-            for (&self.ctc.counter) |*c| {
-                c.gate = 1;
-            }
+            self.bus |= CTC_GATE1 | CTC_GATE2;
+            self.ctc.counter[1].gate = 1;
+            self.ctc.counter[2].gate = 1;
+            // GATE0 is controlled by the GDG CT53G7 register in MZ-700 mode (default low),
+            // and pulled high in MZ-800 mode.
+            self.bus = self.setCTC0Gate(self.bus, if (self.gdg.is_mz700) 0 else 1);
         }
 
         pub fn exec(self: *Self, micro_seconds: u32) u32 {
@@ -496,7 +498,13 @@ pub fn Type() type {
             }
 
             // Tick chips (only those that tick with CPU clock)
+            const was_mz700 = self.gdg.is_mz700;
             bus = self.gdg.tick(bus);
+            // If MZ-700/MZ-800 mode changed via DMD register, update CTC GATE0.
+            if (self.gdg.is_mz700 != was_mz700) {
+                // MZ-700 mode: GATE0 follows ct53g7 (default low). MZ-800 mode: GATE0 = 1.
+                bus = self.setCTC0Gate(bus, if (self.gdg.is_mz700) self.gdg.ct53g7 else 1);
+            }
             // Inject VBLN onto PIO Port A bit 5 (PA5, bus bit 69).
             // VBLN is inactive (1) during canvas display, active (0) during blanking.
             const pio_pa5_mask: Bus = @as(Bus, 1) << PIO_PINS.PA[5];
@@ -727,6 +735,12 @@ pub fn Type() type {
             return addr < (if (hires) MEM_CONFIG.MZ800.VRAM_HIRES_END else MEM_CONFIG.MZ800.VRAM_LORES_END);
         }
 
+        /// Set CTC counter 0 GATE0: updates both the bus pin and the counter gate state.
+        fn setCTC0Gate(self: *Self, bus: Bus, val: u1) Bus {
+            self.ctc.counter[0].gate = val;
+            return if (val == 1) bus | CTC_GATE0 else bus & ~CTC_GATE0;
+        }
+
         fn mz700TranslateIOREQ(self: *Self, in_bus: Bus) Bus {
             var bus = in_bus;
             var io_addr: u16 = 0;
@@ -755,12 +769,8 @@ pub fn Type() type {
                         io_addr = 0xce;
                     } else if (is_wr) {
                         const gate_val: u1 = @truncate(getData(bus));
-                        if (gate_val == 1) {
-                            self.bus |= CTC_GATE0;
-                        } else {
-                            self.bus &= ~CTC_GATE0;
-                        }
-                        self.ctc.counter[0].gate = gate_val;
+                        self.gdg.ct53g7 = gate_val;
+                        self.bus = self.setCTC0Gate(self.bus, gate_val);
                     }
                 },
 
