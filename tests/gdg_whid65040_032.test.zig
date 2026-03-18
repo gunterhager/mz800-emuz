@@ -1,5 +1,6 @@
 const std = @import("std");
 const expect = std.testing.expect;
+const expectEqual = std.testing.expectEqual;
 const expectApproxEqAbs = std.testing.expectApproxEqAbs;
 const gdg_whid65040_032 = @import("chips").gdg_whid65040_032;
 
@@ -34,6 +35,50 @@ test "reset" {
     try expect(sut.is_mz700 == true);
     // DIP switch defaults to MZ-800 (dip_is_mz700 == false).
     try expect(sut.dip_is_mz700 == false);
+}
+
+test "softReset preserves VRAM, hard reset clears VRAM" {
+    var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
+    const cgrom = [_]u8{0} ** 64;
+    var sut = GDG_WHID65040_032.init(.{
+        .cgrom = &cgrom,
+        .rgba8_buffer = &rgba8_buffer,
+    });
+
+    sut.vram1[0] = 0xAB;
+    sut.vram2[0] = 0xCD;
+
+    // Soft reset must preserve VRAM content.
+    sut.softReset();
+    try expectEqual(sut.vram1[0], @as(u8, 0xAB));
+    try expectEqual(sut.vram2[0], @as(u8, 0xCD));
+
+    // Hard reset must zero VRAM.
+    sut.reset();
+    try expectEqual(sut.vram1[0], @as(u8, 0x00));
+    try expectEqual(sut.vram2[0], @as(u8, 0x00));
+}
+
+test "softReset resets control registers" {
+    var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
+    const cgrom = [_]u8{0} ** 64;
+    var sut = GDG_WHID65040_032.init(.{
+        .cgrom = &cgrom,
+        .rgba8_buffer = &rgba8_buffer,
+    });
+
+    sut.set_dmd(0x00); // MZ-800 mode
+    sut.wf = 0xFF;
+    sut.rf = 0xFF;
+    sut.bcol = 0x07;
+
+    sut.softReset();
+
+    try expectEqual(sut.wf, @as(u8, 0));
+    try expectEqual(sut.rf, @as(u8, 0));
+    try expectEqual(sut.bcol, @as(u8, 0));
+    // DMD reset to MZ-700 compat (hardware default after RST).
+    try expect(sut.is_mz700 == true);
 }
 
 test "set MZ-700 mode" {
