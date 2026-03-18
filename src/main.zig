@@ -349,23 +349,15 @@ export fn cleanup() void {
 
 export fn input(ev: ?*const sapp.Event) void {
     const event = ev.?;
-    // const shift = (0 != (event.modifiers & sapp.modifier_shift));
 
     // forward input events to sokol-imgui
     _ = simgui.handleEvent(event.*);
 
     switch (event.type) {
-        .CHAR => {
-            const c: u8 = @truncate(event.char_code);
-            std.debug.print("🚨 Char code: {}\n", .{c});
-        },
-        .KEY_DOWN, .KEY_UP => {
-            const code = event.key_code;
-            std.debug.print("🚨 Key code: {}\n", .{code});
-        },
-        .FILES_DROPPED => {
-            handleDroppedFiles();
-        },
+        .KEY_DOWN => sys.keyDown(@intCast(@intFromEnum(event.key_code))),
+        .KEY_UP => sys.keyUp(@intCast(@intFromEnum(event.key_code))),
+        .UNFOCUSED => sys.flushKeyboard(),
+        .FILES_DROPPED => handleDroppedFiles(),
         else => {},
     }
 }

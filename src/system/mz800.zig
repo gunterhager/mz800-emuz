@@ -276,6 +276,7 @@ pub fn Type() type {
         mem: Memory,
 
         key_buf: KeyBuf,
+        keyboard_matrix: [10]u8 = [_]u8{0xFF} ** 10,
 
         /// Memory buffers for 64K RAM
         ram: [MEM_CONFIG.MZ800.RAM_SIZE]u8,
@@ -354,6 +355,7 @@ pub fn Type() type {
             }
             self.psg.reset();
             self.cpu.reset();
+            self.keyboard_matrix = [_]u8{0xFF} ** 10;
             // GATE pins are pulled high on real MZ-800 hardware.
             // Set gate directly to avoid triggering state machine transitions
             // before the ROM programs the counters.
@@ -408,8 +410,12 @@ pub fn Type() type {
                 bus = self.videoTick(bus);
             }
             self.bus = bus;
-            // self.updateKeyboard(micro_seconds);
+            self.updateKeyboard(micro_seconds);
             return num_ticks;
+        }
+
+        fn updateKeyboard(self: *Self, micro_seconds: u32) void {
+            self.key_buf.update(micro_seconds);
         }
 
         pub fn tick(self: *Self, in_bus: Bus) Bus {
@@ -468,6 +474,11 @@ pub fn Type() type {
             // Tick chips (only those that tick with CPU clock)
             bus = self.gdg.tick(bus);
             bus = self.pio.tick(bus);
+            // Inject keyboard matrix onto PPI Port B bus pins (active low).
+            // The column to read is the lower nibble of Port A output.
+            const kb_col: usize = self.ppi.ports[0].output & 0x0F;
+            const ppi_pb_mask: Bus = @as(Bus, 0xFF) << 88;
+            bus = (bus & ~ppi_pb_mask) | (@as(Bus, self.keyboard_matrix[kb_col]) << 88);
             bus = self.ppi.tick(bus);
             bus = self.ctc.tick(bus);
             bus = self.psg.tick(bus);
@@ -788,6 +799,114 @@ pub fn Type() type {
                 },
                 else => {},
             }
+        }
+
+        /// Keyboard matrix: sokol Keycode integer values → (column, bit) in the 10×8 matrix.
+        /// Active low: 0 = pressed, 1 = released (initial state 0xFF per column).
+        /// Integer values match sokol app.zig Keycode enum.
+        const KeyEntry = struct { key: u32, col: u4, bit: u3 };
+        const KEY_MAP = [_]KeyEntry{
+            // Col 0: BLANK(GRAVE), GRAPH(CAPS), LIBRA(F9), ALPHA(BACKSLASH), TAB, ;, :, CR
+            .{ .key = 96,  .col = 0, .bit = 7 }, // GRAVE_ACCENT → BLANK
+            .{ .key = 280, .col = 0, .bit = 6 }, // CAPS_LOCK → GRAPH
+            .{ .key = 298, .col = 0, .bit = 5 }, // F9 → LIBRA
+            .{ .key = 92,  .col = 0, .bit = 4 }, // BACKSLASH → ALPHA
+            .{ .key = 258, .col = 0, .bit = 3 }, // TAB
+            .{ .key = 59,  .col = 0, .bit = 2 }, // SEMICOLON
+            .{ .key = 39,  .col = 0, .bit = 1 }, // APOSTROPHE → colon key
+            .{ .key = 257, .col = 0, .bit = 0 }, // ENTER
+            // Col 1: Y, Z, [, ]
+            .{ .key = 89,  .col = 1, .bit = 7 }, // Y
+            .{ .key = 90,  .col = 1, .bit = 6 }, // Z
+            .{ .key = 91,  .col = 1, .bit = 4 }, // LEFT_BRACKET
+            .{ .key = 93,  .col = 1, .bit = 3 }, // RIGHT_BRACKET
+            // Col 2: Q R S T U V W X
+            .{ .key = 81,  .col = 2, .bit = 7 }, // Q
+            .{ .key = 82,  .col = 2, .bit = 6 }, // R
+            .{ .key = 83,  .col = 2, .bit = 5 }, // S
+            .{ .key = 84,  .col = 2, .bit = 4 }, // T
+            .{ .key = 85,  .col = 2, .bit = 3 }, // U
+            .{ .key = 86,  .col = 2, .bit = 2 }, // V
+            .{ .key = 87,  .col = 2, .bit = 1 }, // W
+            .{ .key = 88,  .col = 2, .bit = 0 }, // X
+            // Col 3: I J K L M N O P
+            .{ .key = 73,  .col = 3, .bit = 7 }, // I
+            .{ .key = 74,  .col = 3, .bit = 6 }, // J
+            .{ .key = 75,  .col = 3, .bit = 5 }, // K
+            .{ .key = 76,  .col = 3, .bit = 4 }, // L
+            .{ .key = 77,  .col = 3, .bit = 3 }, // M
+            .{ .key = 78,  .col = 3, .bit = 2 }, // N
+            .{ .key = 79,  .col = 3, .bit = 1 }, // O
+            .{ .key = 80,  .col = 3, .bit = 0 }, // P
+            // Col 4: A B C D E F G H
+            .{ .key = 65,  .col = 4, .bit = 7 }, // A
+            .{ .key = 66,  .col = 4, .bit = 6 }, // B
+            .{ .key = 67,  .col = 4, .bit = 5 }, // C
+            .{ .key = 68,  .col = 4, .bit = 4 }, // D
+            .{ .key = 69,  .col = 4, .bit = 3 }, // E
+            .{ .key = 70,  .col = 4, .bit = 2 }, // F
+            .{ .key = 71,  .col = 4, .bit = 1 }, // G
+            .{ .key = 72,  .col = 4, .bit = 0 }, // H
+            // Col 5: 1 2 3 4 5 6 7 8
+            .{ .key = 49,  .col = 5, .bit = 7 }, // 1
+            .{ .key = 50,  .col = 5, .bit = 6 }, // 2
+            .{ .key = 51,  .col = 5, .bit = 5 }, // 3
+            .{ .key = 52,  .col = 5, .bit = 4 }, // 4
+            .{ .key = 53,  .col = 5, .bit = 3 }, // 5
+            .{ .key = 54,  .col = 5, .bit = 2 }, // 6
+            .{ .key = 55,  .col = 5, .bit = 1 }, // 7
+            .{ .key = 56,  .col = 5, .bit = 0 }, // 8
+            // Col 6: EQUAL(~), MINUS, SPACE, 0, 9, COMMA, PERIOD
+            .{ .key = 61,  .col = 6, .bit = 6 }, // EQUAL → ~ key
+            .{ .key = 45,  .col = 6, .bit = 5 }, // MINUS
+            .{ .key = 32,  .col = 6, .bit = 4 }, // SPACE
+            .{ .key = 48,  .col = 6, .bit = 3 }, // 0
+            .{ .key = 57,  .col = 6, .bit = 2 }, // 9
+            .{ .key = 44,  .col = 6, .bit = 1 }, // COMMA
+            .{ .key = 46,  .col = 6, .bit = 0 }, // PERIOD
+            // Col 7: INSERT, DELETE, UP, DOWN, RIGHT, LEFT, SLASH(/)
+            .{ .key = 260, .col = 7, .bit = 7 }, // INSERT
+            .{ .key = 261, .col = 7, .bit = 6 }, // DELETE
+            .{ .key = 265, .col = 7, .bit = 5 }, // UP
+            .{ .key = 264, .col = 7, .bit = 4 }, // DOWN
+            .{ .key = 262, .col = 7, .bit = 3 }, // RIGHT
+            .{ .key = 263, .col = 7, .bit = 2 }, // LEFT
+            .{ .key = 47,  .col = 7, .bit = 0 }, // SLASH
+            // Col 8: ESC, CTRL (L/R), SHIFT (L/R)
+            .{ .key = 256, .col = 8, .bit = 7 }, // ESCAPE
+            .{ .key = 341, .col = 8, .bit = 6 }, // LEFT_CONTROL
+            .{ .key = 345, .col = 8, .bit = 6 }, // RIGHT_CONTROL
+            .{ .key = 340, .col = 8, .bit = 0 }, // LEFT_SHIFT
+            .{ .key = 344, .col = 8, .bit = 0 }, // RIGHT_SHIFT
+            // Col 9: F1 F2 F3 F4 F5
+            .{ .key = 290, .col = 9, .bit = 7 }, // F1
+            .{ .key = 291, .col = 9, .bit = 6 }, // F2
+            .{ .key = 292, .col = 9, .bit = 5 }, // F3
+            .{ .key = 293, .col = 9, .bit = 4 }, // F4
+            .{ .key = 294, .col = 9, .bit = 3 }, // F5
+        };
+
+        pub fn keyDown(self: *Self, key: u32) void {
+            for (KEY_MAP) |entry| {
+                if (entry.key == key) {
+                    self.keyboard_matrix[entry.col] &= ~(@as(u8, 1) << entry.bit);
+                    return;
+                }
+            }
+        }
+
+        pub fn keyUp(self: *Self, key: u32) void {
+            for (KEY_MAP) |entry| {
+                if (entry.key == key) {
+                    self.keyboard_matrix[entry.col] |= @as(u8, 1) << entry.bit;
+                    return;
+                }
+            }
+        }
+
+        pub fn flushKeyboard(self: *Self) void {
+            self.keyboard_matrix = [_]u8{0xFF} ** 10;
+            self.key_buf.flush();
         }
 
         pub fn displayInfo(selfOrNull: ?*const Self) DisplayInfo {
