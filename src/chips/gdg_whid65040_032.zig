@@ -285,6 +285,10 @@ pub fn Type(comptime cfg: TypeConfig) type {
         /// Indicates if machine is in MZ-700 mode. This is actually toggled by setting the DMD register.
         is_mz700: bool = false,
 
+        /// CT53G7 register: controls CTC0 GATE0 in MZ-700 mode (written via I/O 0xe008).
+        /// 0 = GATE0 low (timer disabled), 1 = GATE0 high (timer enabled).
+        ct53g7: u1 = 0,
+
         /// DIP switch state: true = MZ-700 compat mode selected, false = MZ-800 mode (default).
         /// Set by the system before each reset; reflects the user's preference.
         /// The ROM reads this via status register bit 1 to configure the display mode at boot.
