@@ -401,6 +401,10 @@ pub fn Type() type {
                     }
                     bus = self.ctc.setCLK2(bus);
                 }
+                // TEMPO tick (cursor blink oscillator)
+                if ((self.clock.ticks % (clock_dividers.TEMPO / 2)) == 0) {
+                    self.gdg.status ^= GDG.STATUS_MODE.TEMPO;
+                }
                 // PSG tick (~221.7 kHz)
                 if ((self.clock.ticks % clock_dividers.PSG_CLK) == 0) {
                     self.psg.step();
@@ -489,7 +493,8 @@ pub fn Type() type {
             // The column to read is the lower nibble of Port A output.
             const kb_col: usize = self.ppi.ports[0].output & 0x0F;
             const ppi_pb_mask: Bus = @as(Bus, 0xFF) << 88;
-            bus = (bus & ~ppi_pb_mask) | (@as(Bus, self.keyboard_matrix[kb_col]) << 88);
+            const kb_data: u8 = if (kb_col < self.keyboard_matrix.len) self.keyboard_matrix[kb_col] else 0xFF;
+            bus = (bus & ~ppi_pb_mask) | (@as(Bus, kb_data) << 88);
             // Inject VBLN onto PPI Port C bit 7 (PC7, bus bit 103).
             const ppi_pc7_mask: Bus = @as(Bus, 1) << PPI_PINS.PC[7];
             if (self.video.vbln == 1) {
@@ -499,6 +504,13 @@ pub fn Type() type {
             }
             bus = self.ppi.tick(bus);
             bus = self.ctc.tick(bus);
+            // CTC OUT2 drives Z80 INT, gated by PPI Port C bit 2.
+            // Interrupt fires only when both CTC2 OUT = 1 and PPI PC2 = 1.
+            const ctc_out2 = (bus & (@as(Bus, 1) << CTC_PINS.OUT2)) != 0;
+            const ppi_pc2 = (self.ppi.ports[2].output & (1 << 2)) != 0;
+            if (ctc_out2 and ppi_pc2) {
+                bus |= @as(Bus, 1) << CPU_PINS.INT;
+            }
             bus = self.psg.tick(bus);
 
             return bus;
@@ -641,7 +653,11 @@ pub fn Type() type {
         fn isMZ700VRAMAddr(self: *Self, addr: u16) bool {
             if (!self.vram_banked_in) return false;
             if (!self.gdg.is_mz700) return false;
-            return (addr >= MEM_CONFIG.MZ700.VRAM_START) and (addr < MEM_CONFIG.MZ700.VRAM_END);
+            // Character VRAM: 0xD000-0xD3FF only
+            if (addr >= 0xD000 and addr < 0xD400) return true;
+            // Color VRAM: 0xD800-0xDBFF only
+            if (addr >= 0xD800 and addr < 0xDC00) return true;
+            return false;
         }
 
         fn isMZ800VRAMAddr(self: *Self, addr: u16) bool {
@@ -673,10 +689,21 @@ pub fn Type() type {
                 MEM_CONFIG.MZ700.IO_START + 0x06 => io_addr = 0xd6,
                 MEM_CONFIG.MZ700.IO_START + 0x07 => if (is_wr) { io_addr = 0xd7; },
 
-                // 0xE008: write maps to GDG memory bank switch (0xE0 range via IORQ),
-                // read maps to GDG status register (0xCE).
-                // TODO: clarify MZ-700 write to 0xe008 (mem mapped IO)
-                MEM_CONFIG.MZ700.IO_START + 0x08 => if (is_wr) { io_addr = 0xe0; } else if (is_rd) { io_addr = 0xce; },
+                // 0xE008: read maps to GDG status register (0xCE).
+                // Write controls CTC counter 0 GATE signal (bit 0 only).
+                MEM_CONFIG.MZ700.IO_START + 0x08 => {
+                    if (is_rd) {
+                        io_addr = 0xce;
+                    } else if (is_wr) {
+                        const gate_val: u1 = @truncate(getData(bus));
+                        if (gate_val == 1) {
+                            self.bus |= CTC_GATE0;
+                        } else {
+                            self.bus &= ~CTC_GATE0;
+                        }
+                        self.ctc.counter[0].gate = gate_val;
+                    }
+                },
 
                 else => {},
             }

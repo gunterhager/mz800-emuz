@@ -36,7 +36,7 @@ pub const frequencies = struct {
     /// c: uFarad
     /// result: Hz
     fn osc556Frequency(r1: comptime_float, r2: comptime_float, c: comptime_float) comptime_float {
-        return 1.44 / ((kOhmToOhm(r1) + 2 * kOhmToOhm(r2)) / uFaradToFarad(c));
+        return 1.44 / ((kOhmToOhm(r1) + 2 * kOhmToOhm(r2)) * uFaradToFarad(c));
     }
 
     /// Converts micro Farads into Farads

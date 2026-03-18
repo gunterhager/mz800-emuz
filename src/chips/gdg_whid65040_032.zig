@@ -519,7 +519,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
         /// the read format register of the GDG.
         pub fn mem_rd(self: *Self, addr: u16) u8 {
             if (self.is_mz700) {
-                if ((self.rf != RF_MODE.PLANE_I) or (addr > VRAM_MAX_MZ700_ADDR)) {
+                if (addr > VRAM_MAX_MZ700_ADDR) {
                     return ILLEGAL_READ_VALUE;
                 } else {
                     return self.vram1[addr];
@@ -642,7 +642,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
         /// write format register of the GDG and the display mode.
         pub fn mem_wr(self: *Self, addr: u16, data: u8) void {
             if (self.is_mz700) {
-                if ((self.wf != RF_MODE.PLANE_I) or (addr > VRAM_MAX_MZ700_ADDR)) {
+                if (addr > VRAM_MAX_MZ700_ADDR) {
                     return;
                 } else {
                     self.vram1[addr] = data;
