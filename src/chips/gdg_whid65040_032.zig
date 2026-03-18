@@ -355,6 +355,24 @@ pub fn Type(comptime cfg: TypeConfig) type {
             self.resetRGBA8Buffer();
         }
 
+        /// Soft reset: resets all GDG control registers but preserves VRAM contents.
+        /// On real hardware, the RST signal does not clear VRAM (plain SRAM).
+        pub fn softReset(self: *Self) void {
+            self.wf = 0;
+            self.rf = 0;
+            self.status = 0;
+            // Hardware power-on default is MZ-700 compat mode.
+            // The ROM reads the DIP switch (dip_is_mz700) via status register bit 1
+            // and programs the DMD register to enter MZ-800 mode if requested.
+            self.set_dmd(DMD_MODE.MZ700);
+            self.resetScroll();
+            self.bcol = 0;
+            self.plt = std.mem.zeroes(@TypeOf((self.plt)));
+            self.plt_sw = 0;
+            // resetVRAM() intentionally NOT called — VRAM persists through RST.
+            self.resetRGBA8Buffer();
+        }
+
         /// Execute one clock cycle
         pub fn tick(self: *Self, in_bus: Bus) Bus {
             return self.iorq(in_bus);

@@ -72,6 +72,40 @@ test "init" {
     try expect(checkROM2(&sut));
 }
 
+test "soft reset sets vram_banked_in false" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+
+    // After hard reset (initInPlace calls reset(false)), VRAM is banked in.
+    try expectEqual(sut.vram_banked_in, true);
+
+    // After soft reset, all memory is flat RAM, VRAM must NOT be intercepted.
+    sut.reset(true);
+    try expectEqual(sut.vram_banked_in, false);
+
+    // After hard reset again, VRAM is banked back in.
+    sut.reset(false);
+    try expectEqual(sut.vram_banked_in, true);
+}
+
+test "soft reset preserves RAM, hard reset fills RAM" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+
+    const test_addr: u16 = 0x4000;
+    sut.ram[test_addr] = 0x42;
+
+    // Soft reset: RAM must be preserved.
+    sut.reset(true);
+    try expectEqual(sut.ram[test_addr], @as(u8, 0x42));
+
+    // Hard reset: RAM is filled with 0x00/0xFF alternating (even addr = 0x00).
+    sut.reset(false);
+    try expectEqual(sut.ram[test_addr], @as(u8, 0x00));
+}
+
 test "MZ800 bank switching" {
     const sut = try std.testing.allocator.create(MZ800);
     defer std.testing.allocator.destroy(sut);

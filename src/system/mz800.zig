@@ -339,7 +339,6 @@ pub fn Type() type {
         }
 
         pub fn reset(self: *Self, is_soft_reset: bool) void {
-            // TODO: check soft/hard reset
             self.video = .{};
             self.resetMemoryMap(is_soft_reset);
             self.pio.reset();
@@ -348,7 +347,11 @@ pub fn Type() type {
             // Sync DIP switch to GDG before reset so the ROM reads the correct
             // status bit 1 and programs the DMD register accordingly.
             self.gdg.dip_is_mz700 = self.preferred_is_mz700;
-            self.gdg.reset();
+            if (is_soft_reset) {
+                self.gdg.softReset();
+            } else {
+                self.gdg.reset();
+            }
             self.psg.reset();
             self.cpu.reset();
             // GATE pins are pulled high on real MZ-800 hardware.
@@ -699,7 +702,8 @@ pub fn Type() type {
         fn resetMemoryMap(self: *Self, soft: bool) void {
             // Soft reset: when pressing reset button while holding CTRL on keyboard
             if (soft) {
-                // All memory will be DRAM
+                // All memory will be DRAM; VRAM intercept must be disabled.
+                self.vram_banked_in = false;
                 self.mem.mapRAM(0x0000, MEM_CONFIG.MZ800.RAM_SIZE, &self.ram);
                 return;
             }
