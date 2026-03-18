@@ -265,6 +265,9 @@ pub fn Type() type {
             ticks: usize = 0,
             h_ticks: usize = 0,
             v_count: usize = 0,
+            // Vertical BLaNk signal: 1 = inactive (during canvas display), 0 = active (during blanking).
+            // Wired to PPI Port C bit 7 (PC7) and PIO Port A bit 5 (PA5).
+            vbln: u1 = 0,
         } = .{},
 
         // Internal clock for the emulator. Counts CLK0 ticks from emulator boot.
@@ -473,12 +476,27 @@ pub fn Type() type {
 
             // Tick chips (only those that tick with CPU clock)
             bus = self.gdg.tick(bus);
+            // Inject VBLN onto PIO Port A bit 5 (PA5, bus bit 69).
+            // VBLN is inactive (1) during canvas display, active (0) during blanking.
+            const pio_pa5_mask: Bus = @as(Bus, 1) << PIO_PINS.PA[5];
+            if (self.video.vbln == 1) {
+                bus |= pio_pa5_mask;
+            } else {
+                bus &= ~pio_pa5_mask;
+            }
             bus = self.pio.tick(bus);
             // Inject keyboard matrix onto PPI Port B bus pins (active low).
             // The column to read is the lower nibble of Port A output.
             const kb_col: usize = self.ppi.ports[0].output & 0x0F;
             const ppi_pb_mask: Bus = @as(Bus, 0xFF) << 88;
             bus = (bus & ~ppi_pb_mask) | (@as(Bus, self.keyboard_matrix[kb_col]) << 88);
+            // Inject VBLN onto PPI Port C bit 7 (PC7, bus bit 103).
+            const ppi_pc7_mask: Bus = @as(Bus, 1) << PPI_PINS.PC[7];
+            if (self.video.vbln == 1) {
+                bus |= ppi_pc7_mask;
+            } else {
+                bus &= ~ppi_pc7_mask;
+            }
             bus = self.ppi.tick(bus);
             bus = self.ctc.tick(bus);
             bus = self.psg.tick(bus);
@@ -506,16 +524,14 @@ pub fn Type() type {
                     const index = framebufferIndex(x, y);
 
                     // Video status updates
-                    // Start of real HSYNC (used for CTC CLK1 - this isn't used for the status flags)
-                    if (x == 950) {
-                        // TODO: use real HSYNC
-                    }
-                    // Start of HSYNC
-                    if (x == 926) {
+                    // sts_Hsync: asserts at h_tick=950, deasserts at h_tick=1078 (128px duration).
+                    // In frame-x coordinates: x = h_tick - video_enable_start (186).
+                    // Start of HSYNC status (h_tick=950 → x=764)
+                    if (x == 950 - video.screen.horizontal.video_enable_start) {
                         self.gdg.status &= ~GDG.STATUS_MODE.HSYNC;
                     }
-                    // End of HSYNC
-                    if (x == 1133) {
+                    // End of HSYNC status (h_tick=1078 → x=892)
+                    if (x == 1078 - video.screen.horizontal.video_enable_start) {
                         self.gdg.status |= GDG.STATUS_MODE.HSYNC;
                     }
                     // Start of HBLANK
@@ -526,13 +542,17 @@ pub fn Type() type {
                     if (x == video.border.left) {
                         self.gdg.status |= GDG.STATUS_MODE.HBLANK;
                     }
-                    // Start of VBLANK
+                    // Start of VBLANK (active = 0) at end of last canvas row
                     if (x == 790 and y == (video.border.top + video.canvas.height - 1)) {
                         self.gdg.status &= ~GDG.STATUS_MODE.VBLANK;
+                        // VBLN goes active (0): wired to PPI PC7 and PIO PA5
+                        self.video.vbln = 0;
                     }
-                    // End of VBLANK
-                    if (x == 790 and y == video.border.top) {
+                    // End of VBLANK (inactive = 1) at end of last top-border row
+                    if (x == 790 and y == (video.border.top - 1)) {
                         self.gdg.status |= GDG.STATUS_MODE.VBLANK;
+                        // VBLN goes inactive (1): wired to PPI PC7 and PIO PA5
+                        self.video.vbln = 1;
                     }
                     // Start of VSYNC
                     if (x == 792 and y == (video.border.top + video.canvas.height + video.border.bottom - 1)) {
