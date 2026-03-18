@@ -8,6 +8,7 @@
 //!   PC5 (R) RDATA  — serial data input from tape recorder (injected from WAV)
 //!   PC4 (R) MOTOR  — motor status readback (0=OFF, 1=ON)
 //!   PC3 (W) M-ON   — motor on/off, activated by rising edge 0→1
+//!   PC1 (W) WDATA  — serial data output to tape recorder (recording, stub)
 
 const std = @import("std");
 
@@ -37,6 +38,8 @@ pub const CMT = struct {
     prev_m_on: bool,
     /// True when a WAV file has been successfully loaded.
     loaded: bool,
+    /// Last WDATA bit written by the CPU via PC1 (for future recording support).
+    wdata: bool,
 
     pub fn init() Self {
         return .{
@@ -48,6 +51,7 @@ pub const CMT = struct {
             .motor = false,
             .prev_m_on = false,
             .loaded = false,
+            .wdata = false,
         };
     }
 
@@ -92,6 +96,12 @@ pub const CMT = struct {
             std.debug.print("🚨 CMT: motor OFF\n", .{});
         }
         self.prev_m_on = m_on;
+    }
+
+    /// Receives the WDATA signal (PC1 output) for tape recording.
+    /// Stores the last bit written; actual recording is not yet implemented.
+    pub fn writeData(self: *Self, bit: bool) void {
+        self.wdata = bit;
     }
 
     /// Rewind tape to the beginning.
