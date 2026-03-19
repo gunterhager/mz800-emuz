@@ -209,6 +209,77 @@ test "mem wr PSET" {
     try expect(sut.vram2[VRAM_PLANE_OFFSET] == 0x55);
 }
 
+test "palette color write" {
+    var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
+    const cgrom = [_]u8{0} ** 64;
+    var sut = GDG_WHID65040_032.init(.{
+        .cgrom = &cgrom,
+        .rgba8_buffer = &rgba8_buffer,
+    });
+
+    // Palette2 | red: 0x20 | 0x02 = 0x22 (bit 5-4 = 0b10 = index 2, bits 3-0 = 0b0010 = red)
+    var bus: Bus = GDG_WHID65040_032.IORQ | GDG_WHID65040_032.WR;
+    bus = GDG_WHID65040_032.setData(bus, 0x22);
+    bus = GDG_WHID65040_032.setABUS(bus, 0xF0);
+    _ = sut.tick(bus);
+
+    try expectEqual(sut.plt[2], @as(u4, 0x02));
+    try expectEqual(sut.plt_rgba8[2], COLOR.all[2]);
+}
+
+test "palette switch write" {
+    var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
+    const cgrom = [_]u8{0} ** 64;
+    var sut = GDG_WHID65040_032.init(.{
+        .cgrom = &cgrom,
+        .rgba8_buffer = &rgba8_buffer,
+    });
+
+    // PaletteBlock2 = 0x42 (bit 6 = 1 = palette switch, bits 1-0 = 2 = block select)
+    var bus: Bus = GDG_WHID65040_032.IORQ | GDG_WHID65040_032.WR;
+    bus = GDG_WHID65040_032.setData(bus, 0x42);
+    bus = GDG_WHID65040_032.setABUS(bus, 0xF0);
+    _ = sut.tick(bus);
+
+    try expectEqual(sut.plt_sw, @as(u2, 2));
+}
+
+test "palette applied in decode_vram_mz800 with non-zero plt_sw" {
+    var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
+    const cgrom = [_]u8{0} ** 64;
+    var sut = GDG_WHID65040_032.init(.{
+        .cgrom = &cgrom,
+        .rgba8_buffer = &rgba8_buffer,
+    });
+
+    // 320x200 16-color mode
+    sut.set_dmd(DMD_MODE.HICOLOR);
+
+    // Set plt_sw = 1 (PaletteBlock1 = 0x41)
+    var bus: Bus = GDG_WHID65040_032.IORQ | GDG_WHID65040_032.WR;
+    bus = GDG_WHID65040_032.setABUS(bus, 0xF0);
+    bus = GDG_WHID65040_032.setData(bus, 0x41);
+    _ = sut.tick(bus);
+
+    // Set plt[1] = green (Palette1 | green = 0x10 | 0x04 = 0x14)
+    bus = GDG_WHID65040_032.setData(bus, 0x14);
+    _ = sut.tick(bus);
+
+    // Set VRAM: plane I=all-1, plane II=all-0, plane III=all-1, plane IV=all-0
+    // → value = 0b0101 = 5 for each pixel bit
+    // (5 >> 2) & 0x03 = 1 = plt_sw → palette lookup: plt[5 & 0x03] = plt[1] = green
+    sut.vram1[0] = 0xFF; // plane I
+    sut.vram1[VRAM_PLANE_OFFSET] = 0x00; // plane II
+    sut.vram2[0] = 0xFF; // plane III
+    sut.vram2[VRAM_PLANE_OFFSET] = 0x00; // plane IV
+
+    sut.decode_vram_mz800(0, 0);
+
+    // Lores mode writes 2 fb entries per pixel; all 8 pixels map to green
+    try expectEqual(sut.rgba8_buffer[0], COLOR.all[4]); // first of the doubled pixel
+    try expectEqual(sut.rgba8_buffer[1], COLOR.all[4]); // second of the doubled pixel
+}
+
 test "mem rd searching + mem wr PSET" {
     var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
     const cgrom = [_]u8{0} ** 64;

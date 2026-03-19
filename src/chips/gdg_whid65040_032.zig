@@ -201,7 +201,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
         /// Palette size
         pub const PALETTE_SIZE = 4;
 
-        pub const PAL_SW: u8 = 1 << 7;
+        pub const PAL_SW: u8 = 1 << 6;
 
         /// Size of physical VRAM bank (two can be installed)
         pub const VRAM_SIZE = 0x4000; // 16K
@@ -795,7 +795,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
                     // If plane III and IV match palette switch
                     if (((value >> 2) & 0x03) == self.plt_sw) {
                         // Take color from palette
-                        color_code = self.plt[value];
+                        color_code = self.plt[value & 0x03];
                     } else {
                         // Take color directly from plane data
                         color_code = value;
