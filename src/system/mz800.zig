@@ -289,6 +289,16 @@ pub fn Type() type {
         ram: [MEM_CONFIG.MZ800.RAM_SIZE]u8,
         rom: ROM,
         vram_banked_in: bool = false,
+        /// Tracks which ROMs are currently mapped, used by PROHIBIT/RETURN.
+        rom1_mapped: bool = true,
+        cgrom_mapped: bool = true,
+        rom2_mapped: bool = true,
+        /// Saved ROM mapping state before PROHIBIT (0xE5) was issued.
+        pre_prohibit_rom1: bool = false,
+        pre_prohibit_cgrom: bool = false,
+        pre_prohibit_rom2: bool = false,
+        /// Whether PROHIBIT mode is active (0xE5 was written, awaiting 0xE6 RETURN).
+        prohibit_active: bool = false,
         /// Preferred mode to boot into after reset. Survives sys.reset() calls.
         preferred_is_mz700: bool = false,
         junk_page: [Memory.PAGE_SIZE]u8,
@@ -838,10 +848,14 @@ pub fn Type() type {
 
         /// Reset the memory map depending on type of reset
         fn resetMemoryMap(self: *Self, soft: bool) void {
+            self.prohibit_active = false;
             // Soft reset: when pressing reset button while holding CTRL on keyboard
             if (soft) {
                 // All memory will be DRAM; VRAM intercept must be disabled.
                 self.vram_banked_in = false;
+                self.rom1_mapped = false;
+                self.cgrom_mapped = false;
+                self.rom2_mapped = false;
                 self.mem.mapRAM(0x0000, MEM_CONFIG.MZ800.RAM_SIZE, &self.ram);
                 return;
             }
@@ -859,6 +873,9 @@ pub fn Type() type {
             self.mem.mapRAM(0x8000, 0x4000, self.ram[0x8000..0xc000]);
             self.mem.mapRAM(0xc000, 0x2000, self.ram[0xc000..0xe000]);
             self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, &self.rom.rom2);
+            self.rom1_mapped = true;
+            self.cgrom_mapped = true;
+            self.rom2_mapped = true;
         }
 
         /// Memory bank switching with IORQ
@@ -870,6 +887,8 @@ pub fn Type() type {
                     switch (sw) {
                         MEM.SW0 => {
                             self.mem.mapRAM(0x0000, 0x8000, self.ram[0x0000..0x8000]);
+                            self.rom1_mapped = false;
+                            self.cgrom_mapped = false;
                         },
                         MEM.SW1 => {
                             if (self.gdg.is_mz700) {
@@ -877,10 +896,12 @@ pub fn Type() type {
                                 self.mem.mapRAM(MEM_CONFIG.MZ700.VRAM_START, 0x3000, self.ram[MEM_CONFIG.MZ700.VRAM_START..0x10000]);
                             } else {
                                 self.mem.mapRAM(0xe000, 0x2000, self.ram[0xe000..0x10000]);
+                                self.rom2_mapped = false;
                             }
                         },
                         MEM.SW2 => {
                             self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, &self.rom.rom1);
+                            self.rom1_mapped = true;
                         },
                         MEM.SW3 => {
                             // Special treatment in MZ-700: VRAM in 0xd000-0xdfff, Key, Timer in 0xe000-0xe070
@@ -889,23 +910,52 @@ pub fn Type() type {
                                 self.vram_banked_in = true;
                             }
                             self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, &self.rom.rom2);
+                            self.rom2_mapped = true;
                         },
                         MEM.SW4 => {
                             self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, &self.rom.rom1);
+                            self.rom1_mapped = true;
                             if (self.gdg.is_mz700) {
                                 self.mem.mapRAM(0x1000, 0xd000, self.ram[0x1000..0xe000]);
                             } else {
                                 self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
+                                self.cgrom_mapped = true;
                                 self.mem.mapRAM(0x2000, 0xc000, self.ram[0x2000..0xe000]);
                             }
                             self.vram_banked_in = true;
                             self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, &self.rom.rom2);
+                            self.rom2_mapped = true;
                         },
                         MEM.PROHIBIT => {
-                            // Not implemented
+                            // Save current ROM mapping state and hide all ROMs.
+                            self.pre_prohibit_rom1 = self.rom1_mapped;
+                            self.pre_prohibit_cgrom = self.cgrom_mapped;
+                            self.pre_prohibit_rom2 = self.rom2_mapped;
+                            self.prohibit_active = true;
+                            self.mem.mapRAM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, self.ram[MEM_CONFIG.MZ800.ROM1_START .. MEM_CONFIG.MZ800.ROM1_START + MEM_CONFIG.MZ800.ROM1_SIZE]);
+                            self.mem.mapRAM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, self.ram[MEM_CONFIG.MZ800.CGROM_START .. MEM_CONFIG.MZ800.CGROM_START + MEM_CONFIG.MZ800.CGROM_SIZE]);
+                            self.mem.mapRAM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, self.ram[MEM_CONFIG.MZ800.ROM2_START..0x10000]);
+                            self.rom1_mapped = false;
+                            self.cgrom_mapped = false;
+                            self.rom2_mapped = false;
                         },
                         MEM.RETURN => {
-                            // Not implemented
+                            // Restore ROM mapping to state before PROHIBIT was issued.
+                            if (self.prohibit_active) {
+                                self.prohibit_active = false;
+                                if (self.pre_prohibit_rom1) {
+                                    self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, &self.rom.rom1);
+                                    self.rom1_mapped = true;
+                                }
+                                if (self.pre_prohibit_cgrom) {
+                                    self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
+                                    self.cgrom_mapped = true;
+                                }
+                                if (self.pre_prohibit_rom2) {
+                                    self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, &self.rom.rom2);
+                                    self.rom2_mapped = true;
+                                }
+                            }
                         },
                         else => {},
                     }
@@ -915,10 +965,12 @@ pub fn Type() type {
                     switch (sw) {
                         MEM.SW0 => {
                             self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
+                            self.cgrom_mapped = true;
                             self.vram_banked_in = true;
                         },
                         MEM.SW1 => {
                             self.mem.mapRAM(0x1000, 0x1000, self.ram[0x1000..0x2000]);
+                            self.cgrom_mapped = false;
                             self.vram_banked_in = false;
                         },
                         else => {},

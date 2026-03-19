@@ -318,6 +318,150 @@ test "MZ700 bank switching" {
     try expectEqual(sut.vram_banked_in, false);
 }
 
+test "PROHIBIT hides all ROMs, RAM is accessible everywhere" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+    sut.gdg.set_dmd(0); // MZ-800 mode
+
+    // Initial state: ROM1, CGROM, ROM2 all mapped.
+    try expect(checkROM1(sut));
+    try expect(checkCGROM(sut));
+    try expect(checkROM2(sut));
+    try expectEqual(sut.rom1_mapped, true);
+    try expectEqual(sut.cgrom_mapped, true);
+    try expectEqual(sut.rom2_mapped, true);
+    try expectEqual(sut.prohibit_active, false);
+
+    const iorq_wr: mz800.Bus = mz800.IORQ | mz800.WR;
+    const WR_MEM = MZ800.IO_ADDR.WR.MEM;
+
+    // PROHIBIT (0xE5): all ROMs must be hidden, RAM accessible everywhere.
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.PROHIBIT);
+    sut.updateMemoryMap(sut.bus);
+    try expectEqual(sut.prohibit_active, true);
+    try expectEqual(sut.rom1_mapped, false);
+    try expectEqual(sut.cgrom_mapped, false);
+    try expectEqual(sut.rom2_mapped, false);
+    try expect(checkRAM(sut, 0x0000, 0x2000)); // ROM1+CGROM area now RAM
+    try expect(checkRAM(sut, 0xe000, 0x2000)); // ROM2 area now RAM
+}
+
+test "RETURN after PROHIBIT restores previous ROM mapping" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+    sut.gdg.set_dmd(0); // MZ-800 mode
+
+    const iorq_wr: mz800.Bus = mz800.IORQ | mz800.WR;
+    const WR_MEM = MZ800.IO_ADDR.WR.MEM;
+
+    // Issue PROHIBIT from the standard SW4 layout (ROM1+CGROM+ROM2 all mapped).
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.PROHIBIT);
+    sut.updateMemoryMap(sut.bus);
+    try expectEqual(sut.prohibit_active, true);
+
+    // Write to the ROM areas while they are RAM (simulate monitor writing to high RAM).
+    sut.ram[0x0000] = 0xAA;
+    sut.ram[0xe000] = 0xBB;
+    try expectEqual(sut.mem.rd(0x0000), @as(u8, 0xAA));
+    try expectEqual(sut.mem.rd(0xe000), @as(u8, 0xBB));
+
+    // RETURN (0xE6): ROMs must be restored; the ROM content must be visible again.
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.RETURN);
+    sut.updateMemoryMap(sut.bus);
+    try expectEqual(sut.prohibit_active, false);
+    try expectEqual(sut.rom1_mapped, true);
+    try expectEqual(sut.cgrom_mapped, true);
+    try expectEqual(sut.rom2_mapped, true);
+    try expect(checkROM1(sut));
+    try expect(checkCGROM(sut));
+    try expect(checkROM2(sut));
+}
+
+test "PROHIBIT saves partial ROM state; RETURN restores only what was mapped" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+    sut.gdg.set_dmd(0); // MZ-800 mode
+
+    const iorq_wr: mz800.Bus = mz800.IORQ | mz800.WR;
+    const WR_MEM = MZ800.IO_ADDR.WR.MEM;
+
+    // Bank out ROM1+CGROM with SW0, leaving only ROM2.
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.SW0);
+    sut.updateMemoryMap(sut.bus);
+    try expectEqual(sut.rom1_mapped, false);
+    try expectEqual(sut.cgrom_mapped, false);
+    try expectEqual(sut.rom2_mapped, true);
+
+    // PROHIBIT: hides ROM2 too.
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.PROHIBIT);
+    sut.updateMemoryMap(sut.bus);
+    try expectEqual(sut.prohibit_active, true);
+    try expect(checkRAM(sut, 0x0000, 0x2000));
+    try expect(checkRAM(sut, 0xe000, 0x2000));
+
+    // RETURN: only ROM2 should be restored (ROM1+CGROM were not mapped before PROHIBIT).
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.RETURN);
+    sut.updateMemoryMap(sut.bus);
+    try expectEqual(sut.prohibit_active, false);
+    try expectEqual(sut.rom1_mapped, false);
+    try expectEqual(sut.cgrom_mapped, false);
+    try expectEqual(sut.rom2_mapped, true);
+    try expect(checkRAM(sut, 0x0000, 0x2000)); // ROM1+CGROM still RAM
+    try expect(checkROM2(sut));                 // ROM2 restored
+}
+
+test "RETURN without prior PROHIBIT is a no-op" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+    sut.gdg.set_dmd(0); // MZ-800 mode
+
+    const iorq_wr: mz800.Bus = mz800.IORQ | mz800.WR;
+    const WR_MEM = MZ800.IO_ADDR.WR.MEM;
+
+    // RETURN without PROHIBIT: memory layout must remain unchanged.
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.RETURN);
+    sut.updateMemoryMap(sut.bus);
+    try expect(checkROM1(sut));
+    try expect(checkCGROM(sut));
+    try expect(checkROM2(sut));
+}
+
+test "hard reset clears prohibit_active" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+    sut.gdg.set_dmd(0); // MZ-800 mode
+
+    const iorq_wr: mz800.Bus = mz800.IORQ | mz800.WR;
+    const WR_MEM = MZ800.IO_ADDR.WR.MEM;
+
+    // Issue PROHIBIT, then hard reset.
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.PROHIBIT);
+    sut.updateMemoryMap(sut.bus);
+    try expectEqual(sut.prohibit_active, true);
+
+    sut.reset(false);
+    try expectEqual(sut.prohibit_active, false);
+    try expectEqual(sut.rom1_mapped, true);
+    try expectEqual(sut.cgrom_mapped, true);
+    try expectEqual(sut.rom2_mapped, true);
+    try expect(checkROM1(sut));
+    try expect(checkCGROM(sut));
+    try expect(checkROM2(sut));
+}
+
 test "sts_Hsync asserts at h_tick=950" {
     const sut = try std.testing.allocator.create(MZ800);
     defer std.testing.allocator.destroy(sut);
