@@ -446,8 +446,11 @@ pub fn Type() type {
             // Tick CPU
             bus = self.cpu.tick(bus);
 
-            // Clear chip enable and NMI
-            bus &= ~(PIO.CE | PPI.CS | CTC.CS | PSG.CE);
+            // Clear chip enables and INT.
+            // INT is redriven each tick by PIO.tick() and the CTC/INTMSK logic below,
+            // so it must be cleared here to prevent it from accumulating on self.bus
+            // and permanently asserting the interrupt after the first timer firing.
+            bus &= ~(PIO.CE | PPI.CS | CTC.CS | PSG.CE | Z80.INT);
 
             // Memory request
             if ((bus & MREQ) != 0) {
@@ -561,12 +564,15 @@ pub fn Type() type {
             if (ctc_out2 and ppi_pc2) {
                 bus |= @as(Bus, 1) << CPU_PINS.INT;
             }
-            // 8253 Ch.0 OUT drives Z80 INT, gated by PPI Port C bit 0 (SMSK).
-            // Interrupt fires only when both OUT0 = 1 and PC0 = 1.
+            // 8253 Ch.0 OUT drives PIO Port A bit 4 (PA4, active-low / inverted).
+            // When CTC0 OUT is high, PA4 goes low; when CTC0 OUT is low, PA4 is high.
+            // The PIO generates an IM2 interrupt on the falling edge of PA4.
             const ctc_out0 = (bus & (@as(Bus, 1) << CTC_PINS.OUT0)) != 0;
-            const ppi_pc0 = (self.ppi.ports[2].output & (1 << 0)) != 0;
-            if (ctc_out0 and ppi_pc0) {
-                bus |= @as(Bus, 1) << CPU_PINS.INT;
+            const pio_pa4_mask: Bus = @as(Bus, 1) << PIO_PINS.PA[4];
+            if (ctc_out0) {
+                bus &= ~pio_pa4_mask;
+            } else {
+                bus |= pio_pa4_mask;
             }
             bus = self.psg.tick(bus);
 
@@ -839,7 +845,8 @@ pub fn Type() type {
                 0xf4...0xf7 => if ((bus & RD) != 0) { bus = setData(bus, 0xFF); },
                 // PIO Z80 PIO, parallel I/O unit
                 0xfc...0xff => bus |= PIO.CE,
-                else => {},
+                // Unhandled ports: return 0xFF for reads (floating bus / pull-up behavior).
+                else => if ((bus & RD) != 0) { bus = setData(bus, 0xFF); },
             }
 
             return bus;
@@ -970,7 +977,8 @@ pub fn Type() type {
                         MEM.SW1 => {
                             self.mem.mapRAM(0x1000, 0x1000, self.ram[0x1000..0x2000]);
                             self.cgrom_mapped = false;
-                            self.vram_banked_in = false;
+                            // Do NOT clear vram_banked_in: reading $E1 only swaps CGROM→RAM at
+                            // $1000–$1FFF. VRAM at $D000–$DBFF remains accessible throughout boot.
                         },
                         else => {},
                     }

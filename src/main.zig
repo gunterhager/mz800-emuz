@@ -299,7 +299,6 @@ fn uiDrawMenu() void {
             ig.igSeparator();
             if (ig.igMenuItemEx("MZ-700 Mode", null, sys.preferred_is_mz700, true)) {
                 sys.preferred_is_mz700 = !sys.preferred_is_mz700;
-                sys.reset(false);
             }
             ig.igEndMenu();
         }

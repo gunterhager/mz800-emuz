@@ -189,7 +189,8 @@ test "MZ800 bank switching" {
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkROM2(sut));
 
-    // RD SW1: CGROM and VRAM banked out
+    // RD SW1: CGROM banked out (RAM at $1000 restored). VRAM is unaffected:
+    // reading $E1 only controls the $1000–$1FFF window, not $D000–$DBFF VRAM.
     sut.bus = iorq_rd;
     sut.bus = mz800.setAddr(sut.bus, RD_MEM.SW1);
     sut.updateMemoryMap(sut.bus);
@@ -197,7 +198,9 @@ test "MZ800 bank switching" {
     try expect(checkRAM(sut, 0x1000, 0x1000));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkROM2(sut));
-    try expectEqual(sut.vram_banked_in, false);
+    // vram_banked_in must remain true: the ROM continues to write to VRAM after
+    // this point (boot menu, command prompt) without an explicit SW0/SW4 re-enable.
+    try expectEqual(sut.vram_banked_in, true);
 
     // RD SW0: CGROM and VRAM banked in (test only for VRAM)
     sut.bus = iorq_rd;
@@ -307,7 +310,8 @@ test "MZ700 bank switching" {
     try expect(checkRAM(sut, 0xe000, 0x2000));
     try expectEqual(sut.vram_banked_in, true);
 
-    // RD SW1: CGROM and VRAM banked out
+    // RD SW1: CGROM banked out (RAM at $1000 restored). VRAM is unaffected:
+    // reading $E1 only controls the $1000–$1FFF window, not $D000–$DBFF VRAM.
     sut.bus = iorq_rd;
     sut.bus = mz800.setAddr(sut.bus, RD_MEM.SW1);
     sut.updateMemoryMap(sut.bus);
@@ -315,7 +319,9 @@ test "MZ700 bank switching" {
     try expect(checkRAM(sut, 0x1000, 0x1000));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkRAM(sut, 0xe000, 0x2000));
-    try expectEqual(sut.vram_banked_in, false);
+    // vram_banked_in must remain true: the ROM continues to write to VRAM after
+    // this point (boot menu, command prompt) without an explicit SW0/SW4 re-enable.
+    try expectEqual(sut.vram_banked_in, true);
 }
 
 test "PROHIBIT hides all ROMs, RAM is accessible everywhere" {
