@@ -38,6 +38,7 @@ defc BytesPerBand = BytesPerLine * LinesPerBand  ; 2000
   ;     Band 2: PLT2 column, Band 3: PLT3 column (plane I bit only)
   ld a, WriteFormatSingleWrite | FormatPlaneI
   out (PortWriteFormatRegister), a
+  out (PortReadFormatRegister), a
 
   ld hl, MemoryVRAMStart
   ld bc, BytesPerBand
@@ -59,6 +60,7 @@ defc BytesPerBand = BytesPerLine * LinesPerBand  ; 2000
   ;     Bands 2-3: PLT2/PLT3 (plane II bit = 1)
   ld a, WriteFormatSingleWrite | FormatPlaneII
   out (PortWriteFormatRegister), a
+  out (PortReadFormatRegister), a
 
   ld hl, MemoryVRAMStart
   ld bc, BytesPerBand * 2
