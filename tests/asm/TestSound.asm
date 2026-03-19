@@ -6,7 +6,6 @@
 ; Program halts after one full pass.
 
 include "MZ800.inc"
-include "MZ800Utils.inc"
 
 org 02000h
 
@@ -18,6 +17,7 @@ org 02000h
 ; Silence all channels at startup
   call silence_all
 
+main:
 ; =================
 ; Section 1: Frequency range on channel 0
 ; Low note (divider 0x3FF), mid note (0x200), high note (0x050)
@@ -118,7 +118,9 @@ fade_in:
   ld a, PSGLatch | PSGChannel0 | PSGAttenuation
   or b
   call set_sound_data
+  push bc
   call wait
+  pop bc
   dec b
   ld a, b
   cp 0ffh ; check for underflow (b wrapped from 0 to 0xFF)
@@ -134,7 +136,9 @@ fade_out:
   ld a, PSGLatch | PSGChannel0 | PSGAttenuation
   or b
   call set_sound_data
+  push bc
   call wait
+  pop bc
   inc b
   ld a, b
   cp 10h
@@ -275,13 +279,14 @@ fade_out:
   call wait
 
 ; =================
-; Section 8: Silence all and halt
+; Section 8: Silence all and loop
 ; =================
 
   call silence_all
   ld a, ColorBlack
   call set_border
-  halt
+  call wait
+  jp main
 
 ; -----------------
 ; Silence all four channels
@@ -312,6 +317,8 @@ set_border:
   ld c, PortBorderColorLow
   out (c), a
   ret
+
+include "MZ800Utils.inc"
 
   defs 256 ; room for stack
 StackStart:
