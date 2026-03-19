@@ -839,7 +839,8 @@ pub fn Type() type {
                 0xf4...0xf7 => if ((bus & RD) != 0) { bus = setData(bus, 0xFF); },
                 // PIO Z80 PIO, parallel I/O unit
                 0xfc...0xff => bus |= PIO.CE,
-                else => {},
+                // Unhandled ports: return 0xFF for reads (floating bus / pull-up behavior).
+                else => if ((bus & RD) != 0) { bus = setData(bus, 0xFF); },
             }
 
             return bus;
@@ -970,7 +971,8 @@ pub fn Type() type {
                         MEM.SW1 => {
                             self.mem.mapRAM(0x1000, 0x1000, self.ram[0x1000..0x2000]);
                             self.cgrom_mapped = false;
-                            self.vram_banked_in = false;
+                            // Do NOT clear vram_banked_in: reading $E1 only swaps CGROM→RAM at
+                            // $1000–$1FFF. VRAM at $D000–$DBFF remains accessible throughout boot.
                         },
                         else => {},
                     }
