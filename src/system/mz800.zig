@@ -564,12 +564,15 @@ pub fn Type() type {
             if (ctc_out2 and ppi_pc2) {
                 bus |= @as(Bus, 1) << CPU_PINS.INT;
             }
-            // 8253 Ch.0 OUT drives Z80 INT, gated by PPI Port C bit 0 (SMSK).
-            // Interrupt fires only when both OUT0 = 1 and PC0 = 1.
+            // 8253 Ch.0 OUT drives PIO Port A bit 4 (PA4, active-low / inverted).
+            // When CTC0 OUT is high, PA4 goes low; when CTC0 OUT is low, PA4 is high.
+            // The PIO generates an IM2 interrupt on the falling edge of PA4.
             const ctc_out0 = (bus & (@as(Bus, 1) << CTC_PINS.OUT0)) != 0;
-            const ppi_pc0 = (self.ppi.ports[2].output & (1 << 0)) != 0;
-            if (ctc_out0 and ppi_pc0) {
-                bus |= @as(Bus, 1) << CPU_PINS.INT;
+            const pio_pa4_mask: Bus = @as(Bus, 1) << PIO_PINS.PA[4];
+            if (ctc_out0) {
+                bus &= ~pio_pa4_mask;
+            } else {
+                bus |= pio_pa4_mask;
             }
             bus = self.psg.tick(bus);
 
