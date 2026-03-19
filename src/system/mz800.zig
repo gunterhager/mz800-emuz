@@ -827,10 +827,9 @@ pub fn Type() type {
                 // GDG WHID 65040-032, memory bank switch
                 0xe0...0xe6 => self.updateMemoryMap(bus),
                 0xf0...0xf1 => {
-                    // GDG WHID 65040-032, Palette register (write only)
-                    if ((addr == 0xf0) and ((bus & WR) != 0)) {}
+                    // GDG WHID 65040-032, Palette register (write only, handled by gdg.tick())
                     // Joystick (read only)
-                    else if ((bus & RD) != 0) {
+                    if ((bus & RD) != 0) {
                         bus |= PPI.CS;
                     }
                 },
