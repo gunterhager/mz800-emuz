@@ -446,8 +446,11 @@ pub fn Type() type {
             // Tick CPU
             bus = self.cpu.tick(bus);
 
-            // Clear chip enable and NMI
-            bus &= ~(PIO.CE | PPI.CS | CTC.CS | PSG.CE);
+            // Clear chip enables and INT.
+            // INT is redriven each tick by PIO.tick() and the CTC/INTMSK logic below,
+            // so it must be cleared here to prevent it from accumulating on self.bus
+            // and permanently asserting the interrupt after the first timer firing.
+            bus &= ~(PIO.CE | PPI.CS | CTC.CS | PSG.CE | Z80.INT);
 
             // Memory request
             if ((bus & MREQ) != 0) {
