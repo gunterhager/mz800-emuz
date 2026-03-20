@@ -391,17 +391,20 @@ fn loadMzfFile(path: [*:0]const u8) void {
 }
 
 fn loadWavFile(path: [*:0]const u8) void {
+    const path_slice = std.mem.sliceTo(path, 0);
     const io = std.Io.Threaded.global_single_threaded.io();
-    const file = std.Io.Dir.cwd().openFile(io, std.mem.sliceTo(path, 0), .{}) catch |err| {
+    const file = std.Io.Dir.cwd().openFile(io, path_slice, .{}) catch |err| {
         std.debug.print("🚨 Error opening WAV '{s}': {}\n", .{ path, err });
         return;
     };
     defer file.close(io);
     const allocator = gpa.allocator();
-    // Allocate a generous read buffer; CMT caps internally at 2 MB
-    const max_read = 3 * 1024 * 1024;
-    const buf = allocator.alloc(u8, max_read) catch |err| {
-        std.debug.print("🚨 Error allocating WAV buffer: {}\n", .{err});
+    const file_size = (std.Io.Dir.cwd().statFile(io, path_slice, .{}) catch |err| {
+        std.debug.print("🚨 Error getting WAV file size '{s}': {}\n", .{ path, err });
+        return;
+    }).size;
+    const buf = allocator.alloc(u8, file_size) catch |err| {
+        std.debug.print("🚨 Error allocating WAV buffer ({} MB): {}\n", .{ file_size / (1024 * 1024), err });
         return;
     };
     defer allocator.free(buf);
