@@ -410,7 +410,19 @@ fn loadWavFile(path: [*:0]const u8) void {
         return;
     };
     sys.loadWav(buf[0..bytes_read]) catch |err| {
-        std.debug.print("🚨 Error parsing WAV '{s}': {}\n", .{ path, err });
+        const reason: []const u8 = switch (err) {
+            error.WavTooShort => "file is too short to be a valid WAV",
+            error.NotRiff => "not a RIFF file",
+            error.NotWave => "not a WAV file (RIFF container but wrong type)",
+            error.WavTruncated => "a WAV chunk extends beyond the file — the file may be truncated, larger than 3 MB, or use a non-standard format",
+            error.WavFmtTooShort => "WAV format chunk is malformed",
+            error.WavNotPCM => "unsupported audio format — only uncompressed PCM (format 1) is supported",
+            error.WavNotMono => "unsupported channel count — only mono WAV files are supported",
+            error.WavNot8Bit => "unsupported bit depth — only 8-bit WAV files are supported",
+            error.WavNoFmtChunk => "no format chunk found in WAV file",
+            error.WavNoDataChunk => "no audio data found in WAV file",
+        };
+        std.debug.print("🚨 Cannot load WAV '{s}': {s}\n", .{ path, reason });
         return;
     };
 }
