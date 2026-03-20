@@ -210,7 +210,7 @@ pub fn Type(comptime cfg: TypeConfig) type {
         /// Last available VRAM address in MZ-700 mode
         pub const VRAM_MAX_MZ700_ADDR: u16 = 0x1f3f;
 
-        pub const VRAM_MAX_LORES_ADDR: u16 = 0x1f3f;
+        pub const VRAM_MAX_LORES_ADDR: u16 = 0x1fff;
         pub const VRAM_MAX_HIRES_ADDR: u16 = 0x3e7f;
 
         /// Value we get when reading from illegal memory address

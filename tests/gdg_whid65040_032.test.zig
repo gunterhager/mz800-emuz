@@ -339,3 +339,32 @@ test "mem rd searching + mem wr PSET" {
     // Plane IV
     try expect(sut.vram2[VRAM_PLANE_OFFSET] == 0x00);
 }
+
+test "VRAM lores: full 8KB plane (0x0000-0x1FFF) is writable and readable" {
+    var rgba8_buffer = [_]u32{0} ** GDG_WHID65040_032.FRAMEBUFFER_SIZE_PIXEL;
+    const cgrom = [_]u8{0} ** 64;
+    var sut = GDG_WHID65040_032.init(.{
+        .cgrom = &cgrom,
+        .rgba8_buffer = &rgba8_buffer,
+    });
+    sut.set_dmd(0); // MZ-800 lores mode
+    // Enable plane I for writes (SINGLE mode) and reads.
+    sut.set_wf(WF_MODE.PLANE_I);
+    sut.set_rf(RF_MODE.PLANE_I);
+
+    // Addresses in the displayable area must be accessible.
+    sut.mem_wr(0x0000, 0xAB);
+    try expectEqual(sut.mem_rd(0x0000), @as(u8, 0xAB));
+
+    // Addresses above the last displayable pixel (0x1F3F) but within the
+    // physical plane (0x1FFF) must also be accessible. These were previously
+    // treated as illegal, causing VRAM test failures on real hardware.
+    sut.mem_wr(0x1F40, 0xCD);
+    try expectEqual(sut.mem_rd(0x1F40), @as(u8, 0xCD));
+
+    sut.mem_wr(0x1F80, 0xEF);
+    try expectEqual(sut.mem_rd(0x1F80), @as(u8, 0xEF));
+
+    sut.mem_wr(0x1FFF, 0x55);
+    try expectEqual(sut.mem_rd(0x1FFF), @as(u8, 0x55));
+}
