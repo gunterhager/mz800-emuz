@@ -324,6 +324,79 @@ test "MZ700 bank switching" {
     try expectEqual(sut.vram_banked_in, true);
 }
 
+test "MZ700 WR SW1 sets vram_banked_in false and maps D000-FFFF as RAM" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+    sut.gdg.is_mz700 = true;
+
+    const iorq_wr: mz800.Bus = mz800.IORQ | mz800.WR;
+    const WR_MEM = MZ800.IO_ADDR.WR.MEM;
+
+    // WR SW0: bank out ROM1 and CGROM.
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.SW0);
+    sut.updateMemoryMap(sut.bus);
+
+    // WR SW1 in MZ-700 mode: bank out ROM2 and VRAM, map DRAM $D000-$FFFF.
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.SW1);
+    sut.updateMemoryMap(sut.bus);
+
+    try expectEqual(sut.vram_banked_in, false);
+    try expect(checkRAM(sut, 0xd000, 0x3000));
+}
+
+test "MZ700 DRAM mode: E000-E009 accessible as RAM via memory mapper" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+    sut.gdg.is_mz700 = true;
+
+    const iorq_wr: mz800.Bus = mz800.IORQ | mz800.WR;
+    const WR_MEM = MZ800.IO_ADDR.WR.MEM;
+
+    // Apply SW0 + SW1 to enter DRAM mode (vram_banked_in = false).
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.SW0);
+    sut.updateMemoryMap(sut.bus);
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.SW1);
+    sut.updateMemoryMap(sut.bus);
+    try expectEqual(sut.vram_banked_in, false);
+
+    // Write known values directly to RAM and confirm the memory mapper exposes
+    // them at $E000-$E009 (the MZ-700 memory-mapped IO range). When
+    // vram_banked_in is false the IO intercept in tick() must be disabled.
+    sut.ram[0xE000] = 0x42;
+    sut.ram[0xE008] = 0x7F;
+    try expectEqual(sut.mem.rd(0xE000), @as(u8, 0x42));
+    try expectEqual(sut.mem.rd(0xE008), @as(u8, 0x7F));
+}
+
+test "MZ700 WR SW3 restores vram_banked_in true" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+    sut.gdg.is_mz700 = true;
+
+    const iorq_wr: mz800.Bus = mz800.IORQ | mz800.WR;
+    const WR_MEM = MZ800.IO_ADDR.WR.MEM;
+
+    // Enter DRAM mode.
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.SW1);
+    sut.updateMemoryMap(sut.bus);
+    try expectEqual(sut.vram_banked_in, false);
+
+    // WR SW3: restore ROM2 and VRAM intercept.
+    sut.bus = iorq_wr;
+    sut.bus = mz800.setAddr(sut.bus, WR_MEM.SW3);
+    sut.updateMemoryMap(sut.bus);
+    try expectEqual(sut.vram_banked_in, true);
+    try expect(checkROM2(sut));
+}
+
 test "PROHIBIT hides all ROMs, RAM is accessible everywhere" {
     const sut = try std.testing.allocator.create(MZ800);
     defer std.testing.allocator.destroy(sut);

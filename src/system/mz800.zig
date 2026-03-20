@@ -479,7 +479,7 @@ pub fn Type() type {
                     }
                 }
                 // MZ-700 memory mapped IO
-                else if (self.gdg.is_mz700 and isInRange(addr, MEM_CONFIG.MZ700.IO_START, MEM_CONFIG.MZ700.IO_END)) {
+                else if (self.gdg.is_mz700 and self.vram_banked_in and isInRange(addr, MEM_CONFIG.MZ700.IO_START, MEM_CONFIG.MZ700.IO_END)) {
                     bus = self.mz700TranslateIOREQ(bus);
                 }
                 // Other memory
