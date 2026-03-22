@@ -28,8 +28,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 .sys = opts.sys,
                 .origin = opts.origin,
                 .size = .{
-                    .x = if (opts.size.x == 0) 620 else opts.size.x,
-                    .y = if (opts.size.y == 0) 220 else opts.size.y,
+                    .x = if (opts.size.x == 0) 640 else opts.size.x,
+                    .y = if (opts.size.y == 0) 300 else opts.size.y,
                 },
                 .open = opts.open,
                 .last_open = opts.open,
@@ -41,6 +41,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
             keycode: u32,
             /// Width as multiple of a standard key width (1.0 = normal key)
             width: f32 = 1.0,
+            /// If true, render as an invisible spacer instead of a button
+            spacer: bool = false,
         };
 
         const ROW_FUNCTION = [_]KeyEntry{
@@ -49,28 +51,28 @@ pub fn Type(comptime cfg: TypeConfig) type {
             .{ .label = "F3",    .keycode = 292 },
             .{ .label = "F4",    .keycode = 293 },
             .{ .label = "F5",    .keycode = 294 },
-            .{ .label = "ESC",   .keycode = 256 },
-            .{ .label = "GRAPH", .keycode = 280 },
-            .{ .label = "ALPHA", .keycode = 92  },
+            .{ .label = "",      .keycode = 0,   .spacer = true },
+            .{ .label = "INST",  .keycode = 260 },
+            .{ .label = "DEL",   .keycode = 261 },
             .{ .label = "LIBRA", .keycode = 298 },
-            .{ .label = "BLANK", .keycode = 96  },
         };
 
         const ROW_NUMBERS = [_]KeyEntry{
-            .{ .label = "1",   .keycode = 49  },
-            .{ .label = "2",   .keycode = 50  },
-            .{ .label = "3",   .keycode = 51  },
-            .{ .label = "4",   .keycode = 52  },
-            .{ .label = "5",   .keycode = 53  },
-            .{ .label = "6",   .keycode = 54  },
-            .{ .label = "7",   .keycode = 55  },
-            .{ .label = "8",   .keycode = 56  },
-            .{ .label = "9",   .keycode = 57  },
-            .{ .label = "0",   .keycode = 48  },
-            .{ .label = "-",   .keycode = 45  },
-            .{ .label = "~",   .keycode = 61  },
-            .{ .label = "INS", .keycode = 260 },
-            .{ .label = "DEL", .keycode = 261 },
+            .{ .label = "GRAPH", .keycode = 280 },
+            .{ .label = "1",     .keycode = 49  },
+            .{ .label = "2",     .keycode = 50  },
+            .{ .label = "3",     .keycode = 51  },
+            .{ .label = "4",     .keycode = 52  },
+            .{ .label = "5",     .keycode = 53  },
+            .{ .label = "6",     .keycode = 54  },
+            .{ .label = "7",     .keycode = 55  },
+            .{ .label = "8",     .keycode = 56  },
+            .{ .label = "9",     .keycode = 57  },
+            .{ .label = "0",     .keycode = 48  },
+            .{ .label = "-",     .keycode = 45  },
+            .{ .label = "^",     .keycode = 96  },
+            .{ .label = "~",     .keycode = 61  },
+            .{ .label = "BREAK", .keycode = 256 },
         };
 
         const ROW_QWERTY1 = [_]KeyEntry{
@@ -85,28 +87,29 @@ pub fn Type(comptime cfg: TypeConfig) type {
             .{ .label = "I",   .keycode = 73  },
             .{ .label = "O",   .keycode = 79  },
             .{ .label = "P",   .keycode = 80  },
-            .{ .label = "[",   .keycode = 91  },
-            .{ .label = "]",   .keycode = 93  },
+            .{ .label = "@",   .keycode = 91  },
+            .{ .label = "\xc2\xa3", .keycode = 93  }, // £ (UTF-8)
         };
 
         const ROW_QWERTY2 = [_]KeyEntry{
-            .{ .label = "CTRL",  .keycode = 341, .width = 1.5 },
-            .{ .label = "A",     .keycode = 65  },
-            .{ .label = "S",     .keycode = 83  },
-            .{ .label = "D",     .keycode = 68  },
-            .{ .label = "F",     .keycode = 70  },
-            .{ .label = "G",     .keycode = 71  },
-            .{ .label = "H",     .keycode = 72  },
-            .{ .label = "J",     .keycode = 74  },
-            .{ .label = "K",     .keycode = 75  },
-            .{ .label = "L",     .keycode = 76  },
-            .{ .label = ";",     .keycode = 59  },
-            .{ .label = ":",     .keycode = 39  },
-            .{ .label = "ENTER", .keycode = 257, .width = 1.5 },
+            .{ .label = "CTRL", .keycode = 341, .width = 1.5 },
+            .{ .label = "A",    .keycode = 65  },
+            .{ .label = "S",    .keycode = 83  },
+            .{ .label = "D",    .keycode = 68  },
+            .{ .label = "F",    .keycode = 70  },
+            .{ .label = "G",    .keycode = 71  },
+            .{ .label = "H",    .keycode = 72  },
+            .{ .label = "J",    .keycode = 74  },
+            .{ .label = "K",    .keycode = 75  },
+            .{ .label = "L",    .keycode = 76  },
+            .{ .label = "+",    .keycode = 59  },
+            .{ .label = ":",    .keycode = 39  },
+            .{ .label = "CR",   .keycode = 257, .width = 1.5 },
         };
 
         const ROW_QWERTY3 = [_]KeyEntry{
-            .{ .label = "SHIFT", .keycode = 340, .width = 2.0 },
+            .{ .label = "SHIFT", .keycode = 340, .width = 1.5 },
+            .{ .label = "ALPHA", .keycode = 92  },
             .{ .label = "Z",     .keycode = 90  },
             .{ .label = "X",     .keycode = 88  },
             .{ .label = "C",     .keycode = 67  },
@@ -117,17 +120,22 @@ pub fn Type(comptime cfg: TypeConfig) type {
             .{ .label = ",",     .keycode = 44  },
             .{ .label = ".",     .keycode = 46  },
             .{ .label = "/",     .keycode = 47  },
+            .{ .label = "SHIFT", .keycode = 344 },
         };
 
         const ROW_BOTTOM = [_]KeyEntry{
             .{ .label = "SPACE", .keycode = 32, .width = 8.0 },
         };
 
-        const ROW_ARROWS = [_]KeyEntry{
+        const ROW_ARROWS_TOP = [_]KeyEntry{
+            .{ .label = "",   .keycode = 0,   .spacer = true },
+            .{ .label = "UP", .keycode = 265 },
+        };
+
+        const ROW_ARROWS_BOTTOM = [_]KeyEntry{
             .{ .label = "LEFT",  .keycode = 263 },
-            .{ .label = "RIGHT", .keycode = 262 },
-            .{ .label = "UP",    .keycode = 265 },
             .{ .label = "DOWN",  .keycode = 264 },
+            .{ .label = "RIGHT", .keycode = 262 },
         };
 
         fn drawRow(self: *Self, row: []const KeyEntry) void {
@@ -141,15 +149,19 @@ pub fn Type(comptime cfg: TypeConfig) type {
                     ig.igSetCursorPosX(ig.igGetCursorPosX() + spacing - ig.igGetStyle().*.ItemSpacing.x);
                 }
                 const btn_w = key_w * entry.width + spacing * (entry.width - 1.0);
-                ig.igPushIDInt(@intCast(entry.keycode));
-                _ = ig.igButtonEx(entry.label.ptr, .{ .x = btn_w, .y = key_h });
-                if (ig.igIsItemActive()) {
-                    self.sys.keyDown(entry.keycode);
+                if (entry.spacer) {
+                    ig.igDummy(.{ .x = btn_w, .y = key_h });
+                } else {
+                    ig.igPushIDInt(@intCast(entry.keycode));
+                    _ = ig.igButtonEx(entry.label.ptr, .{ .x = btn_w, .y = key_h });
+                    if (ig.igIsItemActive()) {
+                        self.sys.keyDown(entry.keycode);
+                    }
+                    if (ig.igIsItemDeactivated()) {
+                        self.sys.keyUp(entry.keycode);
+                    }
+                    ig.igPopID();
                 }
-                if (ig.igIsItemDeactivated()) {
-                    self.sys.keyUp(entry.keycode);
-                }
-                ig.igPopID();
             }
         }
 
@@ -167,7 +179,8 @@ pub fn Type(comptime cfg: TypeConfig) type {
                 self.drawRow(&ROW_QWERTY2);
                 self.drawRow(&ROW_QWERTY3);
                 self.drawRow(&ROW_BOTTOM);
-                self.drawRow(&ROW_ARROWS);
+                self.drawRow(&ROW_ARROWS_TOP);
+                self.drawRow(&ROW_ARROWS_BOTTOM);
             }
             ig.igEnd();
         }
