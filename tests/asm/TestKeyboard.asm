@@ -104,7 +104,7 @@ msg_prompt:
 ; Index = col*8 + bit_pos  (bit_pos 0=bit7, 1=bit6, ... 7=bit0)
 ; 0 = non-printable key
 char_table:
-    ; Col 0: BLANK, GRAPH, LIBRA(F9), ALPHA, TAB, ;, :, CR
+    ; Col 0: BLANK, GRAPH, POUND(F9), ALPHA, TAB, ;, :, CR
     defb 0, 0, 0, 0, 0, ';', ':', 0dh
     ; Col 1: Y, Z, -, [, ], -, -, -
     defb 'Y', 'Z', 0, '[', ']', 0, 0, 0
