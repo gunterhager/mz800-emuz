@@ -999,11 +999,15 @@ pub fn Type() type {
             .{ .key = 92,  .col = 0, .bit = 4 }, // BACKSLASH → ALPHA
             .{ .key = 258, .col = 0, .bit = 3 }, // TAB
             .{ .key = 59,  .col = 0, .bit = 2 }, // SEMICOLON
+            .{ .key = 334, .col = 0, .bit = 2 }, // KP_ADD → semicolon key
             .{ .key = 39,  .col = 0, .bit = 1 }, // APOSTROPHE → colon key
+            .{ .key = 332, .col = 0, .bit = 1 }, // KP_MULTIPLY → colon key
             .{ .key = 257, .col = 0, .bit = 0 }, // ENTER
-            // Col 1: Y, Z, [, ]
+            .{ .key = 335, .col = 0, .bit = 0 }, // KP_ENTER
+            // Col 1: Y, Z, @(F6), [, ]
             .{ .key = 89,  .col = 1, .bit = 7 }, // Y
             .{ .key = 90,  .col = 1, .bit = 6 }, // Z
+            .{ .key = 295, .col = 1, .bit = 5 }, // F6 → @ key
             .{ .key = 91,  .col = 1, .bit = 4 }, // LEFT_BRACKET
             .{ .key = 93,  .col = 1, .bit = 3 }, // RIGHT_BRACKET
             // Col 2: Q R S T U V W X
@@ -1035,31 +1039,48 @@ pub fn Type() type {
             .{ .key = 72,  .col = 4, .bit = 0 }, // H
             // Col 5: 1 2 3 4 5 6 7 8
             .{ .key = 49,  .col = 5, .bit = 7 }, // 1
+            .{ .key = 321, .col = 5, .bit = 7 }, // KP_1
             .{ .key = 50,  .col = 5, .bit = 6 }, // 2
             .{ .key = 51,  .col = 5, .bit = 5 }, // 3
+            .{ .key = 323, .col = 5, .bit = 5 }, // KP_3
             .{ .key = 52,  .col = 5, .bit = 4 }, // 4
             .{ .key = 53,  .col = 5, .bit = 3 }, // 5
+            .{ .key = 325, .col = 5, .bit = 3 }, // KP_5
             .{ .key = 54,  .col = 5, .bit = 2 }, // 6
             .{ .key = 55,  .col = 5, .bit = 1 }, // 7
+            .{ .key = 327, .col = 5, .bit = 1 }, // KP_7
             .{ .key = 56,  .col = 5, .bit = 0 }, // 8
-            // Col 6: EQUAL(~), MINUS, SPACE, 0, 9, COMMA, PERIOD
+            // Col 6: \(F7), EQUAL(~), MINUS, SPACE, 0, 9, COMMA, PERIOD
+            .{ .key = 296, .col = 6, .bit = 7 }, // F7 → \ key
             .{ .key = 61,  .col = 6, .bit = 6 }, // EQUAL → ~ key
             .{ .key = 45,  .col = 6, .bit = 5 }, // MINUS
+            .{ .key = 333, .col = 6, .bit = 5 }, // KP_SUBTRACT → minus key
             .{ .key = 32,  .col = 6, .bit = 4 }, // SPACE
             .{ .key = 48,  .col = 6, .bit = 3 }, // 0
             .{ .key = 57,  .col = 6, .bit = 2 }, // 9
+            .{ .key = 329, .col = 6, .bit = 2 }, // KP_9
             .{ .key = 44,  .col = 6, .bit = 1 }, // COMMA
             .{ .key = 46,  .col = 6, .bit = 0 }, // PERIOD
-            // Col 7: INSERT, DELETE, UP, DOWN, RIGHT, LEFT, SLASH(/)
+            // Col 7: INSERT, DELETE, UP, DOWN, RIGHT, LEFT, ?(F8), SLASH(/)
             .{ .key = 260, .col = 7, .bit = 7 }, // INSERT
+            .{ .key = 320, .col = 7, .bit = 7 }, // KP_0 (no NumLock) → INSERT
             .{ .key = 261, .col = 7, .bit = 6 }, // DELETE
+            .{ .key = 259, .col = 7, .bit = 6 }, // BACKSPACE → DELETE
+            .{ .key = 330, .col = 7, .bit = 6 }, // KP_DECIMAL (no NumLock) → DELETE
             .{ .key = 265, .col = 7, .bit = 5 }, // UP
+            .{ .key = 328, .col = 7, .bit = 5 }, // KP_8 (no NumLock) → UP
             .{ .key = 264, .col = 7, .bit = 4 }, // DOWN
+            .{ .key = 322, .col = 7, .bit = 4 }, // KP_2 (no NumLock) → DOWN
             .{ .key = 262, .col = 7, .bit = 3 }, // RIGHT
+            .{ .key = 326, .col = 7, .bit = 3 }, // KP_6 (no NumLock) → RIGHT
             .{ .key = 263, .col = 7, .bit = 2 }, // LEFT
+            .{ .key = 324, .col = 7, .bit = 2 }, // KP_4 (no NumLock) → LEFT
+            .{ .key = 297, .col = 7, .bit = 1 }, // F8 → ? key
             .{ .key = 47,  .col = 7, .bit = 0 }, // SLASH
+            .{ .key = 331, .col = 7, .bit = 0 }, // KP_DIVIDE → slash key
             // Col 8: ESC, CTRL (L/R), SHIFT (L/R)
             .{ .key = 256, .col = 8, .bit = 7 }, // ESCAPE
+            .{ .key = 269, .col = 8, .bit = 7 }, // END → ESC
             .{ .key = 341, .col = 8, .bit = 6 }, // LEFT_CONTROL
             .{ .key = 345, .col = 8, .bit = 6 }, // RIGHT_CONTROL
             .{ .key = 340, .col = 8, .bit = 0 }, // LEFT_SHIFT
