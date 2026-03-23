@@ -165,6 +165,7 @@ const UI_INTEL8253_Pins = [_]UI_CHIP.Pin{
 };
 const UI_GDG = ui_intern.ui_gdg_whid65040_032.Type(.{ .bus = mz800.Bus, .gdg = mz800.GDG });
 const UI_GDG_Pins = [_]UI_CHIP.Pin{};
+const UI_KEYBOARD = ui_intern.ui_keyboard.Type(.{ .sys = MZ800 });
 var sys: MZ800 = undefined;
 var gpa: DebugAllocator = .init;
 
@@ -173,6 +174,7 @@ var ui_z80pio: UI_Z80PIO = undefined;
 var ui_intel8255: UI_INTEL8255 = undefined;
 var ui_intel8253: UI_INTEL8253 = undefined;
 var ui_gdg: UI_GDG = undefined;
+var ui_keyboard: UI_KEYBOARD = undefined;
 
 export fn init() void {
     std.debug.print("🚨 Booting MZ-800...\n", .{});
@@ -241,6 +243,10 @@ export fn init() void {
     });
     start.x += d.x;
     start.y += d.y;
+    ui_keyboard.initInPlace(.{
+        .sys = &sys,
+        .origin = .{ .x = 20, .y = 300 },
+    });
 
     // initialize sokol-imgui
     simgui.setup(.{
@@ -271,6 +277,7 @@ export fn frame() void {
     ui_intel8255.draw(sys.bus);
     ui_intel8253.draw(sys.bus);
     ui_gdg.draw();
+    ui_keyboard.draw();
 
     host.gfx.draw(.{
         .display = sys.displayInfo(),
@@ -299,6 +306,10 @@ fn uiDrawMenu() void {
             ig.igSeparator();
             if (ig.igMenuItemEx("MZ-700 Mode", null, sys.preferred_is_mz700, true)) {
                 sys.preferred_is_mz700 = !sys.preferred_is_mz700;
+            }
+            ig.igSeparator();
+            if (ig.igMenuItem("Keyboard")) {
+                ui_keyboard.open = true;
             }
             ig.igEndMenu();
         }

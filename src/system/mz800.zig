@@ -777,16 +777,24 @@ pub fn Type() type {
             const is_wr = (bus & WR) != 0;
             switch (addr) {
                 // i8255
-                MEM_CONFIG.MZ700.IO_START => if (is_wr) { io_addr = 0xd0; },
-                MEM_CONFIG.MZ700.IO_START + 0x01 => if (is_rd) { io_addr = 0xd1; },
+                MEM_CONFIG.MZ700.IO_START => if (is_wr) {
+                    io_addr = 0xd0;
+                },
+                MEM_CONFIG.MZ700.IO_START + 0x01 => if (is_rd) {
+                    io_addr = 0xd1;
+                },
                 MEM_CONFIG.MZ700.IO_START + 0x02 => io_addr = 0xd2,
-                MEM_CONFIG.MZ700.IO_START + 0x03 => if (is_wr) { io_addr = 0xd3; },
+                MEM_CONFIG.MZ700.IO_START + 0x03 => if (is_wr) {
+                    io_addr = 0xd3;
+                },
 
                 // i8253
                 MEM_CONFIG.MZ700.IO_START + 0x04 => io_addr = 0xd4,
                 MEM_CONFIG.MZ700.IO_START + 0x05 => io_addr = 0xd5,
                 MEM_CONFIG.MZ700.IO_START + 0x06 => io_addr = 0xd6,
-                MEM_CONFIG.MZ700.IO_START + 0x07 => if (is_wr) { io_addr = 0xd7; },
+                MEM_CONFIG.MZ700.IO_START + 0x07 => if (is_wr) {
+                    io_addr = 0xd7;
+                },
 
                 // 0xE008: read maps to GDG status register (0xCE).
                 // Write controls CTC counter 0 GATE signal (bit 0 only).
@@ -821,7 +829,9 @@ pub fn Type() type {
 
             switch (addr) {
                 // Serial IO (not implemented: return 0xFF on read, ignore writes)
-                0xb0...0xb3 => if ((bus & RD) != 0) { bus = setData(bus, 0xFF); },
+                0xb0...0xb3 => if ((bus & RD) != 0) {
+                    bus = setData(bus, 0xFF);
+                },
                 // GDG WHID 65040-032, CRT controller
                 0xcc...0xcf => {},
                 // PPI i8255, keyboard and cassette driver
@@ -829,7 +839,9 @@ pub fn Type() type {
                 // CTC i8253, programmable counter/timer
                 0xd4...0xd7 => bus |= CTC.CS,
                 // FDC, floppy disc controller (not implemented: return 0xFF on read, ignore writes)
-                0xd8...0xdf => if ((bus & RD) != 0) { bus = setData(bus, 0xFF); },
+                0xd8...0xdf => if ((bus & RD) != 0) {
+                    bus = setData(bus, 0xFF);
+                },
                 // GDG WHID 65040-032, memory bank switch
                 0xe0...0xe6 => self.updateMemoryMap(bus),
                 0xf0...0xf1 => {
@@ -842,11 +854,15 @@ pub fn Type() type {
                 // PSG SN 76489 AN, sound generator
                 0xf2 => bus |= PSG.CE,
                 // QDC, quick disk controller (not implemented: return 0xFF on read, ignore writes)
-                0xf4...0xf7 => if ((bus & RD) != 0) { bus = setData(bus, 0xFF); },
+                0xf4...0xf7 => if ((bus & RD) != 0) {
+                    bus = setData(bus, 0xFF);
+                },
                 // PIO Z80 PIO, parallel I/O unit
                 0xfc...0xff => bus |= PIO.CE,
                 // Unhandled ports: return 0xFF for reads (floating bus / pull-up behavior).
-                else => if ((bus & RD) != 0) { bus = setData(bus, 0xFF); },
+                else => if ((bus & RD) != 0) {
+                    bus = setData(bus, 0xFF);
+                },
             }
 
             return bus;
@@ -992,74 +1008,95 @@ pub fn Type() type {
         /// Integer values match sokol app.zig Keycode enum.
         const KeyEntry = struct { key: u32, col: u4, bit: u3 };
         const KEY_MAP = [_]KeyEntry{
-            // Col 0: BLANK(GRAVE), GRAPH(CAPS), LIBRA(F9), ALPHA(BACKSLASH), TAB, ;, :, CR
-            .{ .key = 96,  .col = 0, .bit = 7 }, // GRAVE_ACCENT → BLANK
+            // Col 0: BLANK(GRAVE), GRAPH(CAPS), POUND(F9), ALPHA(BACKSLASH), TAB, ;, :, CR
+            .{ .key = 96, .col = 0, .bit = 7 }, // GRAVE_ACCENT → BLANK
             .{ .key = 280, .col = 0, .bit = 6 }, // CAPS_LOCK → GRAPH
-            .{ .key = 298, .col = 0, .bit = 5 }, // F9 → LIBRA
-            .{ .key = 92,  .col = 0, .bit = 4 }, // BACKSLASH → ALPHA
+            .{ .key = 298, .col = 0, .bit = 5 }, // F9 → POUND
+            .{ .key = 92, .col = 0, .bit = 4 }, // BACKSLASH → ALPHA
             .{ .key = 258, .col = 0, .bit = 3 }, // TAB
-            .{ .key = 59,  .col = 0, .bit = 2 }, // SEMICOLON
-            .{ .key = 39,  .col = 0, .bit = 1 }, // APOSTROPHE → colon key
+            .{ .key = 59, .col = 0, .bit = 2 }, // SEMICOLON
+            .{ .key = 334, .col = 0, .bit = 2 }, // KP_ADD → semicolon key
+            .{ .key = 39, .col = 0, .bit = 1 }, // APOSTROPHE → colon key
+            .{ .key = 332, .col = 0, .bit = 1 }, // KP_MULTIPLY → colon key
             .{ .key = 257, .col = 0, .bit = 0 }, // ENTER
-            // Col 1: Y, Z, [, ]
-            .{ .key = 89,  .col = 1, .bit = 7 }, // Y
-            .{ .key = 90,  .col = 1, .bit = 6 }, // Z
-            .{ .key = 91,  .col = 1, .bit = 4 }, // LEFT_BRACKET
-            .{ .key = 93,  .col = 1, .bit = 3 }, // RIGHT_BRACKET
+            .{ .key = 335, .col = 0, .bit = 0 }, // KP_ENTER
+            // Col 1: Y, Z, @(F6), [, ]
+            .{ .key = 89, .col = 1, .bit = 7 }, // Y
+            .{ .key = 90, .col = 1, .bit = 6 }, // Z
+            .{ .key = 295, .col = 1, .bit = 5 }, // F6 → @ key
+            .{ .key = 91, .col = 1, .bit = 4 }, // LEFT_BRACKET
+            .{ .key = 93, .col = 1, .bit = 3 }, // RIGHT_BRACKET
             // Col 2: Q R S T U V W X
-            .{ .key = 81,  .col = 2, .bit = 7 }, // Q
-            .{ .key = 82,  .col = 2, .bit = 6 }, // R
-            .{ .key = 83,  .col = 2, .bit = 5 }, // S
-            .{ .key = 84,  .col = 2, .bit = 4 }, // T
-            .{ .key = 85,  .col = 2, .bit = 3 }, // U
-            .{ .key = 86,  .col = 2, .bit = 2 }, // V
-            .{ .key = 87,  .col = 2, .bit = 1 }, // W
-            .{ .key = 88,  .col = 2, .bit = 0 }, // X
+            .{ .key = 81, .col = 2, .bit = 7 }, // Q
+            .{ .key = 82, .col = 2, .bit = 6 }, // R
+            .{ .key = 83, .col = 2, .bit = 5 }, // S
+            .{ .key = 84, .col = 2, .bit = 4 }, // T
+            .{ .key = 85, .col = 2, .bit = 3 }, // U
+            .{ .key = 86, .col = 2, .bit = 2 }, // V
+            .{ .key = 87, .col = 2, .bit = 1 }, // W
+            .{ .key = 88, .col = 2, .bit = 0 }, // X
             // Col 3: I J K L M N O P
-            .{ .key = 73,  .col = 3, .bit = 7 }, // I
-            .{ .key = 74,  .col = 3, .bit = 6 }, // J
-            .{ .key = 75,  .col = 3, .bit = 5 }, // K
-            .{ .key = 76,  .col = 3, .bit = 4 }, // L
-            .{ .key = 77,  .col = 3, .bit = 3 }, // M
-            .{ .key = 78,  .col = 3, .bit = 2 }, // N
-            .{ .key = 79,  .col = 3, .bit = 1 }, // O
-            .{ .key = 80,  .col = 3, .bit = 0 }, // P
+            .{ .key = 73, .col = 3, .bit = 7 }, // I
+            .{ .key = 74, .col = 3, .bit = 6 }, // J
+            .{ .key = 75, .col = 3, .bit = 5 }, // K
+            .{ .key = 76, .col = 3, .bit = 4 }, // L
+            .{ .key = 77, .col = 3, .bit = 3 }, // M
+            .{ .key = 78, .col = 3, .bit = 2 }, // N
+            .{ .key = 79, .col = 3, .bit = 1 }, // O
+            .{ .key = 80, .col = 3, .bit = 0 }, // P
             // Col 4: A B C D E F G H
-            .{ .key = 65,  .col = 4, .bit = 7 }, // A
-            .{ .key = 66,  .col = 4, .bit = 6 }, // B
-            .{ .key = 67,  .col = 4, .bit = 5 }, // C
-            .{ .key = 68,  .col = 4, .bit = 4 }, // D
-            .{ .key = 69,  .col = 4, .bit = 3 }, // E
-            .{ .key = 70,  .col = 4, .bit = 2 }, // F
-            .{ .key = 71,  .col = 4, .bit = 1 }, // G
-            .{ .key = 72,  .col = 4, .bit = 0 }, // H
+            .{ .key = 65, .col = 4, .bit = 7 }, // A
+            .{ .key = 66, .col = 4, .bit = 6 }, // B
+            .{ .key = 67, .col = 4, .bit = 5 }, // C
+            .{ .key = 68, .col = 4, .bit = 4 }, // D
+            .{ .key = 69, .col = 4, .bit = 3 }, // E
+            .{ .key = 70, .col = 4, .bit = 2 }, // F
+            .{ .key = 71, .col = 4, .bit = 1 }, // G
+            .{ .key = 72, .col = 4, .bit = 0 }, // H
             // Col 5: 1 2 3 4 5 6 7 8
-            .{ .key = 49,  .col = 5, .bit = 7 }, // 1
-            .{ .key = 50,  .col = 5, .bit = 6 }, // 2
-            .{ .key = 51,  .col = 5, .bit = 5 }, // 3
-            .{ .key = 52,  .col = 5, .bit = 4 }, // 4
-            .{ .key = 53,  .col = 5, .bit = 3 }, // 5
-            .{ .key = 54,  .col = 5, .bit = 2 }, // 6
-            .{ .key = 55,  .col = 5, .bit = 1 }, // 7
-            .{ .key = 56,  .col = 5, .bit = 0 }, // 8
-            // Col 6: EQUAL(~), MINUS, SPACE, 0, 9, COMMA, PERIOD
-            .{ .key = 61,  .col = 6, .bit = 6 }, // EQUAL → ~ key
-            .{ .key = 45,  .col = 6, .bit = 5 }, // MINUS
-            .{ .key = 32,  .col = 6, .bit = 4 }, // SPACE
-            .{ .key = 48,  .col = 6, .bit = 3 }, // 0
-            .{ .key = 57,  .col = 6, .bit = 2 }, // 9
-            .{ .key = 44,  .col = 6, .bit = 1 }, // COMMA
-            .{ .key = 46,  .col = 6, .bit = 0 }, // PERIOD
-            // Col 7: INSERT, DELETE, UP, DOWN, RIGHT, LEFT, SLASH(/)
+            .{ .key = 49, .col = 5, .bit = 7 }, // 1
+            .{ .key = 321, .col = 5, .bit = 7 }, // KP_1
+            .{ .key = 50, .col = 5, .bit = 6 }, // 2
+            .{ .key = 51, .col = 5, .bit = 5 }, // 3
+            .{ .key = 323, .col = 5, .bit = 5 }, // KP_3
+            .{ .key = 52, .col = 5, .bit = 4 }, // 4
+            .{ .key = 53, .col = 5, .bit = 3 }, // 5
+            .{ .key = 325, .col = 5, .bit = 3 }, // KP_5
+            .{ .key = 54, .col = 5, .bit = 2 }, // 6
+            .{ .key = 55, .col = 5, .bit = 1 }, // 7
+            .{ .key = 327, .col = 5, .bit = 1 }, // KP_7
+            .{ .key = 56, .col = 5, .bit = 0 }, // 8
+            // Col 6: \(F7), EQUAL(~), MINUS, SPACE, 0, 9, COMMA, PERIOD
+            .{ .key = 296, .col = 6, .bit = 7 }, // F7 → \ key
+            .{ .key = 61, .col = 6, .bit = 6 }, // EQUAL → ~ key
+            .{ .key = 45, .col = 6, .bit = 5 }, // MINUS
+            .{ .key = 333, .col = 6, .bit = 5 }, // KP_SUBTRACT → minus key
+            .{ .key = 32, .col = 6, .bit = 4 }, // SPACE
+            .{ .key = 48, .col = 6, .bit = 3 }, // 0
+            .{ .key = 57, .col = 6, .bit = 2 }, // 9
+            .{ .key = 329, .col = 6, .bit = 2 }, // KP_9
+            .{ .key = 44, .col = 6, .bit = 1 }, // COMMA
+            .{ .key = 46, .col = 6, .bit = 0 }, // PERIOD
+            // Col 7: INSERT, DELETE, UP, DOWN, RIGHT, LEFT, ?(F8), SLASH(/)
             .{ .key = 260, .col = 7, .bit = 7 }, // INSERT
+            .{ .key = 320, .col = 7, .bit = 7 }, // KP_0 (no NumLock) → INSERT
             .{ .key = 261, .col = 7, .bit = 6 }, // DELETE
+            .{ .key = 259, .col = 7, .bit = 6 }, // BACKSPACE → DELETE
+            .{ .key = 330, .col = 7, .bit = 6 }, // KP_DECIMAL (no NumLock) → DELETE
             .{ .key = 265, .col = 7, .bit = 5 }, // UP
+            .{ .key = 328, .col = 7, .bit = 5 }, // KP_8 (no NumLock) → UP
             .{ .key = 264, .col = 7, .bit = 4 }, // DOWN
+            .{ .key = 322, .col = 7, .bit = 4 }, // KP_2 (no NumLock) → DOWN
             .{ .key = 262, .col = 7, .bit = 3 }, // RIGHT
+            .{ .key = 326, .col = 7, .bit = 3 }, // KP_6 (no NumLock) → RIGHT
             .{ .key = 263, .col = 7, .bit = 2 }, // LEFT
-            .{ .key = 47,  .col = 7, .bit = 0 }, // SLASH
+            .{ .key = 324, .col = 7, .bit = 2 }, // KP_4 (no NumLock) → LEFT
+            .{ .key = 297, .col = 7, .bit = 1 }, // F8 → ? key
+            .{ .key = 47, .col = 7, .bit = 0 }, // SLASH
+            .{ .key = 331, .col = 7, .bit = 0 }, // KP_DIVIDE → slash key
             // Col 8: ESC, CTRL (L/R), SHIFT (L/R)
             .{ .key = 256, .col = 8, .bit = 7 }, // ESCAPE
+            .{ .key = 269, .col = 8, .bit = 7 }, // END → ESC
             .{ .key = 341, .col = 8, .bit = 6 }, // LEFT_CONTROL
             .{ .key = 345, .col = 8, .bit = 6 }, // RIGHT_CONTROL
             .{ .key = 340, .col = 8, .bit = 0 }, // LEFT_SHIFT
