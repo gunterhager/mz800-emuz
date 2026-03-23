@@ -245,7 +245,7 @@ export fn init() void {
     start.y += d.y;
     ui_keyboard.initInPlace(.{
         .sys = &sys,
-        .origin = .{ .x = 20, .y = 200 },
+        .origin = .{ .x = 20, .y = 300 },
     });
 
     // initialize sokol-imgui
