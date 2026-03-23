@@ -725,6 +725,14 @@ pub fn Type() type {
             self.cmt.configure(@intFromFloat(frequencies.CLK0));
         }
 
+        /// Encode an MZF file as synthetic CMT tape data for playback via the ROM loader.
+        pub fn loadMzfAsCmt(self: *Self, obj_file: MZF) !void {
+            const header_bytes = std.mem.asBytes(&obj_file.header);
+            const data_bytes = obj_file.data[0..obj_file.header.file_length];
+            try self.cmt.loadMzf(header_bytes, data_bytes);
+            self.cmt.configure(@intFromFloat(frequencies.CLK0));
+        }
+
         /// Load an MZF file into memory, resets CPU and starts the loaded start address.
         pub fn load(self: *Self, obj_file: MZF) void {
             self.reset(false);

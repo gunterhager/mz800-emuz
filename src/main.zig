@@ -166,6 +166,7 @@ const UI_INTEL8253_Pins = [_]UI_CHIP.Pin{
 const UI_GDG = ui_intern.ui_gdg_whid65040_032.Type(.{ .bus = mz800.Bus, .gdg = mz800.GDG });
 const UI_GDG_Pins = [_]UI_CHIP.Pin{};
 const UI_KEYBOARD = ui_intern.ui_keyboard.Type(.{ .sys = MZ800 });
+const UI_CMT = ui_intern.ui_cmt.Type(.{ .sys = MZ800 });
 var sys: MZ800 = undefined;
 var gpa: DebugAllocator = .init;
 
@@ -175,6 +176,7 @@ var ui_intel8255: UI_INTEL8255 = undefined;
 var ui_intel8253: UI_INTEL8253 = undefined;
 var ui_gdg: UI_GDG = undefined;
 var ui_keyboard: UI_KEYBOARD = undefined;
+var ui_cmt: UI_CMT = undefined;
 
 export fn init() void {
     std.debug.print("🚨 Booting MZ-800...\n", .{});
@@ -247,6 +249,10 @@ export fn init() void {
         .sys = &sys,
         .origin = .{ .x = 20, .y = 300 },
     });
+    ui_cmt.initInPlace(.{
+        .sys = &sys,
+        .origin = .{ .x = 20, .y = 500 },
+    });
 
     // initialize sokol-imgui
     simgui.setup(.{
@@ -278,6 +284,7 @@ export fn frame() void {
     ui_intel8253.draw(sys.bus);
     ui_gdg.draw();
     ui_keyboard.draw();
+    ui_cmt.draw();
 
     host.gfx.draw(.{
         .display = sys.displayInfo(),
@@ -299,9 +306,11 @@ fn uiDrawMenu() void {
         if (ig.igBeginMenu("System")) {
             if (ig.igMenuItem("Reset")) {
                 sys.reset(false);
+                ui_cmt.open = false;
             }
             if (ig.igMenuItem("Soft Reset")) {
                 sys.reset(true);
+                ui_cmt.open = false;
             }
             ig.igSeparator();
             if (ig.igMenuItemEx("MZ-700 Mode", null, sys.preferred_is_mz700, true)) {
@@ -310,6 +319,9 @@ fn uiDrawMenu() void {
             ig.igSeparator();
             if (ig.igMenuItem("Keyboard")) {
                 ui_keyboard.open = true;
+            }
+            if (ig.igMenuItem("CMT")) {
+                ui_cmt.open = true;
             }
             ig.igEndMenu();
         }
@@ -395,10 +407,15 @@ fn loadMzfFile(path: [*:0]const u8) void {
         std.debug.print("🚨 Error loading MZF '{s}': {}\n", .{ path, err });
         return;
     };
-    std.debug.print("🚨 Name: {s}\n", .{obj_file.display_name});
-    std.debug.print("🚨 Loading address: 0x{x:0>4}\n", .{obj_file.header.loading_address});
-    std.debug.print("🚨 Starting address: 0x{x:0>4}\n", .{obj_file.header.start_address});
-    sys.load(obj_file);
+    std.debug.print("🚨 CMT: queuing MZF '{s}' for tape playback\n", .{obj_file.display_name});
+    sys.loadMzfAsCmt(obj_file) catch |err| {
+        const reason: []const u8 = switch (err) {
+            error.MzfTooLong => "program is too large for the CMT sample buffer",
+        };
+        std.debug.print("🚨 Cannot load MZF '{s}' into CMT: {s}\n", .{ path, reason });
+        return;
+    };
+    ui_cmt.open = true;
 }
 
 fn loadWavFile(path: [*:0]const u8) void {
@@ -439,6 +456,7 @@ fn loadWavFile(path: [*:0]const u8) void {
         std.debug.print("🚨 Cannot load WAV '{s}': {s}\n", .{ path, reason });
         return;
     };
+    ui_cmt.open = true;
 }
 
 pub fn main() void {
