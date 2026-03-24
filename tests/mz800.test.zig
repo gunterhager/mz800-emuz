@@ -83,13 +83,25 @@ test "soft reset sets vram_banked_in false" {
     // After hard reset (initInPlace calls reset(false)), VRAM is banked in.
     try expectEqual(sut.vram_banked_in, true);
 
-    // After soft reset, all memory is flat RAM, VRAM must NOT be intercepted.
+    // After soft reset, ROMs are restored but VRAM is NOT intercepted at 0x8000.
     sut.reset(true);
     try expectEqual(sut.vram_banked_in, false);
 
     // After hard reset again, VRAM is banked back in.
     sut.reset(false);
     try expectEqual(sut.vram_banked_in, true);
+}
+
+test "soft reset maps ROMs" {
+    const sut = try std.testing.allocator.create(MZ800);
+    defer std.testing.allocator.destroy(sut);
+    sut.initInPlace(mz800Options());
+
+    sut.reset(true);
+    try expect(checkROM1(sut));
+    try expect(checkCGROM(sut));
+    try expect(checkRAM(sut, 0x2000, 0xc000));
+    try expect(checkROM2(sut));
 }
 
 test "soft reset preserves RAM, hard reset fills RAM" {

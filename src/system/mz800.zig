@@ -879,27 +879,19 @@ pub fn Type() type {
         /// Reset the memory map depending on type of reset
         fn resetMemoryMap(self: *Self, soft: bool) void {
             self.prohibit_active = false;
-            // Soft reset: when pressing reset button while holding CTRL on keyboard
             if (soft) {
-                // All memory will be DRAM; VRAM intercept must be disabled.
+                // Soft reset: restore ROM layout but preserve RAM contents.
+                // VRAM is not intercepted after reset (matches reference implementation).
                 self.vram_banked_in = false;
-                self.rom1_mapped = false;
-                self.cgrom_mapped = false;
-                self.rom2_mapped = false;
-                self.mem.mapRAM(0x0000, MEM_CONFIG.MZ800.RAM_SIZE, &self.ram);
-                return;
+            } else {
+                // Hard reset: fill RAM with 0x00/0xff alternating (per SHARP Service Manual).
+                fillMem(&self.ram);
+                // VRAM is handled by GDG not regular memory mapping here
+                self.vram_banked_in = true;
             }
-
-            // Hard reset: when powering on or resetting with reset button
-            // Fill RAM with  0x00, 0xff alternating.
-            fillMem(&self.ram);
-
-            // According to SHARP Service Manual
             self.mem.mapROM(MEM_CONFIG.MZ800.ROM1_START, MEM_CONFIG.MZ800.ROM1_SIZE, &self.rom.rom1);
             self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
             self.mem.mapRAM(0x2000, 0x6000, self.ram[0x2000..0x8000]);
-            // VRAM is handled by GDG not regular memory mapping here
-            self.vram_banked_in = true;
             self.mem.mapRAM(0x8000, 0x4000, self.ram[0x8000..0xc000]);
             self.mem.mapRAM(0xc000, 0x2000, self.ram[0xc000..0xe000]);
             self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, &self.rom.rom2);
