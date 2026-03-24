@@ -6,7 +6,7 @@
 
 ![MZ-800 Boot Screen](misc/boot_screen.png)
 
-**NOTE:** This project is work in progress. While it does boot into the ROM monitor there are still bugs and unimplemented features. E.g. loading **SHARP BASIC 1Z-016** doesn't work currently.
+**NOTE:** This project is work in progress. While it does successfully boot into the ROM monitor there are still bugs and unimplemented features. E.g. loading **SHARP BASIC 1Z-016** doesn't work currently.
 
 ## Loading MZF files
 

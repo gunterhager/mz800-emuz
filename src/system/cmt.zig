@@ -12,8 +12,9 @@
 
 const std = @import("std");
 
-/// Maximum number of PCM samples (~45 seconds at 44100 Hz, sufficient for MZF tapes).
-pub const MAX_SAMPLES: usize = 2 * 1024 * 1024;
+/// Maximum number of PCM samples.
+/// 3 MB covers WAV files (~68 s at 44100 Hz) and worst-case 64 KB MZF tapes at 4096 Hz.
+pub const MAX_SAMPLES: usize = 3 * 1024 * 1024;
 
 pub const CMT = struct {
     const Self = @This();
@@ -109,6 +110,84 @@ pub const CMT = struct {
         self.position = 0;
     }
 
+    /// Encode an MZF file as synthetic PCM for CMT playback.
+    ///
+    /// Uses the MZ-800 "SANE" tape protocol at 4096 Hz (1 sample ≈ 244 µs):
+    ///   Short pulse [0xFF, 0x00]             — 488 µs, encodes bit 0
+    ///   Long  pulse [0xFF, 0xFF, 0x00, 0x00] — 976 µs, encodes bit 1 and stop bits
+    ///
+    /// Tape structure (matches g_mztape_format_sharp_sane, mztape.c lines 121–135):
+    ///   Long gap  (6400 short)  + Long TM  (40L+40S) + 2L
+    ///   Header (128 B, MSB-first, stop bit per byte)  + CHK (2 B, big-endian popcount) + 2L
+    ///   Short gap (11000 short) + Short TM (20L+20S)  + 2L
+    ///   Data   (N   B, MSB-first, stop bit per byte)  + CHK (2 B, big-endian popcount) + 2L
+    ///
+    /// Checksum = count of '1' bits (popcount) across all bytes in the block.
+    /// `header` must be the raw 128-byte MZF header; `data` the program bytes.
+    pub fn loadMzf(self: *Self, header: []const u8, data: []const u8) !void {
+        const SAMPLE_RATE: u32 = 4096;
+        var pos: usize = 0;
+
+        // ── Long gap: 6400 short pulses ──────────────────────────────────────
+        for (0..6400) |_| pos = try writeShort(&self.samples, pos);
+
+        // ── Long Tape Mark: 40 long + 40 short pulses ────────────────────────
+        for (0..40) |_| pos = try writeLong(&self.samples, pos);
+        for (0..40) |_| pos = try writeShort(&self.samples, pos);
+
+        // ── 2 long pulses ────────────────────────────────────────────────────
+        pos = try writeLong(&self.samples, pos);
+        pos = try writeLong(&self.samples, pos);
+
+        // ── Header block: 128 bytes MSB-first with stop bit ──────────────────
+        var checksum: u16 = 0;
+        for (header) |byte| {
+            checksum += @as(u16, @popCount(byte));
+            pos = try encodeByte(&self.samples, pos, byte);
+        }
+        // Header checksum big-endian (high byte first)
+        pos = try encodeByte(&self.samples, pos, @truncate(checksum >> 8));
+        pos = try encodeByte(&self.samples, pos, @truncate(checksum));
+
+        // ── 2 long pulses ────────────────────────────────────────────────────
+        pos = try writeLong(&self.samples, pos);
+        pos = try writeLong(&self.samples, pos);
+
+        // ── Short gap: 11000 short pulses ────────────────────────────────────
+        for (0..11000) |_| pos = try writeShort(&self.samples, pos);
+
+        // ── Short Tape Mark: 20 long + 20 short pulses ───────────────────────
+        for (0..20) |_| pos = try writeLong(&self.samples, pos);
+        for (0..20) |_| pos = try writeShort(&self.samples, pos);
+
+        // ── 2 long pulses ────────────────────────────────────────────────────
+        pos = try writeLong(&self.samples, pos);
+        pos = try writeLong(&self.samples, pos);
+
+        // ── Data block: N bytes MSB-first with stop bit ──────────────────────
+        checksum = 0;
+        for (data) |byte| {
+            checksum += @as(u16, @popCount(byte));
+            pos = try encodeByte(&self.samples, pos, byte);
+        }
+        // Data checksum big-endian (high byte first)
+        pos = try encodeByte(&self.samples, pos, @truncate(checksum >> 8));
+        pos = try encodeByte(&self.samples, pos, @truncate(checksum));
+
+        // ── 2 long pulses ────────────────────────────────────────────────────
+        pos = try writeLong(&self.samples, pos);
+        pos = try writeLong(&self.samples, pos);
+
+        self.sample_count = pos;
+        self.sample_rate = SAMPLE_RATE;
+        self.position = 0;
+        self.motor = false;
+        self.prev_m_on = false;
+        self.loaded = true;
+
+        std.debug.print("🚨 CMT: loaded MZF as {d} samples @ {d} Hz\n", .{ pos, SAMPLE_RATE });
+    }
+
     /// Parse and load a RIFF/WAV file from a byte slice.
     /// Validates: RIFF container, WAVE type, PCM format (1), mono, 8-bit samples.
     /// Accepts any sample rate. Copies samples into the internal buffer.
@@ -164,3 +243,39 @@ pub const CMT = struct {
         std.debug.print("🚨 CMT: loaded {d} samples @ {d} Hz\n", .{ count, sample_rate });
     }
 };
+
+/// Emit a short pulse [0xFF, 0x00] (≈ 488 µs at 4096 Hz, encodes bit 0).
+fn writeShort(samples: []u8, pos: usize) !usize {
+    if (pos + 2 > samples.len) return error.MzfTooLong;
+    samples[pos] = 0xFF;
+    samples[pos + 1] = 0x00;
+    return pos + 2;
+}
+
+/// Emit a long pulse [0xFF, 0xFF, 0x00, 0x00] (≈ 976 µs at 4096 Hz, encodes bit 1 / stop bit).
+fn writeLong(samples: []u8, pos: usize) !usize {
+    if (pos + 4 > samples.len) return error.MzfTooLong;
+    samples[pos] = 0xFF;
+    samples[pos + 1] = 0xFF;
+    samples[pos + 2] = 0x00;
+    samples[pos + 3] = 0x00;
+    return pos + 4;
+}
+
+/// Encode one byte MSB-first (8 data bits + 1 long stop bit) into `samples`.
+/// Returns the updated position, or error.MzfTooLong on buffer overflow.
+fn encodeByte(samples: []u8, pos: usize, byte_val: u8) !usize {
+    var p = pos;
+    var b = byte_val;
+    for (0..8) |_| {
+        if (b & 0x80 != 0) {
+            p = try writeLong(samples, p);
+        } else {
+            p = try writeShort(samples, p);
+        }
+        b <<= 1;
+    }
+    // Stop bit: always a long pulse (ref: mztape.c lines 624–626)
+    p = try writeLong(samples, p);
+    return p;
+}
