@@ -3,7 +3,7 @@
 const std = @import("std");
 const chipz = @import("chipz");
 const clock_dividers = @import("frequencies.zig").clock_dividers;
-const frequencies = @import("frequencies.zig").frequencies;
+pub const frequencies = @import("frequencies.zig").frequencies;
 const video = @import("video.zig").video;
 
 const z80 = chipz.chips.z80;
@@ -388,55 +388,69 @@ pub fn Type() type {
             self.bus = self.setCTC0Gate(self.bus, if (self.gdg.is_mz700) 0 else 1);
         }
 
+        pub const MasterTickResult = struct {
+            bus: Bus,
+            cpu_ticked: bool,
+        };
+
+        /// Advance one master clock tick. Returns the updated bus and whether a CPU tick fired.
+        pub fn tickMaster(self: *Self, in_bus: Bus) MasterTickResult {
+            var bus = in_bus;
+            self.clock.ticks +%= 1;
+            // CPU tick
+            const cpu_ticked = (self.clock.ticks % clock_dividers.CPU_CLK) == 0;
+            if (cpu_ticked) {
+                bus = self.tick(bus);
+            }
+            // CTC CLK0 tick, CTC counters count only falling edge so we need to
+            // toggle the signal at clock divider / 2
+            if ((self.clock.ticks % clock_dividers.CKMS) == (clock_dividers.CKMS / 2)) {
+                // Toggle CLK0
+                bus ^= CTC_CLK0;
+                bus = self.ctc.setCLK0(bus);
+            }
+            // CLK1 (real HSYNC) is now driven from videoTick() based on h_ticks,
+            // asserting at h_tick=950 and deasserting at h_tick=1030 each line.
+            // TEMPO tick (cursor blink oscillator)
+            if ((self.clock.ticks % (clock_dividers.TEMPO / 2)) == 0) {
+                self.gdg.status ^= GDG.STATUS_MODE.TEMPO;
+            }
+            // 556 cursor oscillator tick → PC6
+            if ((self.clock.ticks % (clock_dividers.CURSOR / 2)) == 0) {
+                self.video.cursor_osc ^= 1;
+            }
+            // PSG tick (~221.7 kHz)
+            if ((self.clock.ticks % clock_dividers.PSG_CLK) == 0) {
+                self.psg.step();
+            }
+            // Audio sample tick (at host sample rate)
+            if ((self.clock.ticks % self.audio_sample_tick) == 0) {
+                // Mix PSG output with 8253 Ch.0 square wave, gated by SMSK (PC0).
+                const smsk = (self.ppi.ports[2].output & (1 << 0)) != 0;
+                const pit_out0: f32 = if (smsk and self.ctc.counter[0].out == 1) 1.0 else 0.0;
+                self.audio.put(self.psg.sample() + pit_out0);
+            }
+            // Video tick
+            bus = self.videoTick(bus);
+            // CMT tick: advance tape position by one master clock tick
+            self.cmt.tick();
+            return .{ .bus = bus, .cpu_ticked = cpu_ticked };
+        }
+
         pub fn exec(self: *Self, micro_seconds: u32) u32 {
             var bus = self.bus;
             const CLK0: u64 = @intFromFloat(frequencies.CLK0);
             const num_ticks = clock.microSecondsToTicks(CLK0, micro_seconds);
             for (0..num_ticks) |_| {
-                self.clock.ticks +%= 1;
-                // CPU tick
-                if ((self.clock.ticks % clock_dividers.CPU_CLK) == 0) {
-                    bus = self.tick(bus);
-                }
-                // CTC CLK0 tick, CTC counters count only falling edge so we need to
-                // toggle the signal at clock divider / 2
-                if ((self.clock.ticks % clock_dividers.CKMS) == (clock_dividers.CKMS / 2)) {
-                    // Toggle CLK0
-                    bus ^= CTC_CLK0;
-                    bus = self.ctc.setCLK0(bus);
-                }
-                // CLK1 (real HSYNC) is now driven from videoTick() based on h_ticks,
-                // asserting at h_tick=950 and deasserting at h_tick=1030 each line.
-                // TEMPO tick (cursor blink oscillator)
-                if ((self.clock.ticks % (clock_dividers.TEMPO / 2)) == 0) {
-                    self.gdg.status ^= GDG.STATUS_MODE.TEMPO;
-                }
-                // 556 cursor oscillator tick → PC6
-                if ((self.clock.ticks % (clock_dividers.CURSOR / 2)) == 0) {
-                    self.video.cursor_osc ^= 1;
-                }
-                // PSG tick (~221.7 kHz)
-                if ((self.clock.ticks % clock_dividers.PSG_CLK) == 0) {
-                    self.psg.step();
-                }
-                // Audio sample tick (at host sample rate)
-                if ((self.clock.ticks % self.audio_sample_tick) == 0) {
-                    // Mix PSG output with 8253 Ch.0 square wave, gated by SMSK (PC0).
-                    const smsk = (self.ppi.ports[2].output & (1 << 0)) != 0;
-                    const pit_out0: f32 = if (smsk and self.ctc.counter[0].out == 1) 1.0 else 0.0;
-                    self.audio.put(self.psg.sample() + pit_out0);
-                }
-                // Video tick
-                bus = self.videoTick(bus);
-                // CMT tick: advance tape position by one master clock tick
-                self.cmt.tick();
+                const result = self.tickMaster(bus);
+                bus = result.bus;
             }
             self.bus = bus;
             self.updateKeyboard(micro_seconds);
             return num_ticks;
         }
 
-        fn updateKeyboard(self: *Self, micro_seconds: u32) void {
+        pub fn updateKeyboard(self: *Self, micro_seconds: u32) void {
             self.key_buf.update(micro_seconds);
         }
 
