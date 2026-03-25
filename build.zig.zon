@@ -16,7 +16,7 @@
     // This field is optional.
     // This is currently advisory only; Zig does not yet do anything
     // with this value.
-    .minimum_zig_version = "0.16.0-dev.2962+08416b44f",
+    .minimum_zig_version = "0.16.0-dev.2979+e93834410",
 
     // This field is optional.
     // Each dependency must either provide a `url` and `hash`, or a `path`.
