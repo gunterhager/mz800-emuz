@@ -526,6 +526,9 @@ pub fn Type() type {
             } else {
                 bus &= ~pio_pa5_mask;
             }
+            // Set IEIO (interrupt enable input/output) to allow PIO to assert INT and provide interrupt vector in IM2 mode.
+            // The PIO is the sole device in the daisy chain (no Z80 CTC), so it gets IEIO directly.
+            bus |= @as(Bus, 1) << PIO_PINS.IEIO;
             bus = self.pio.tick(bus);
             // Inject keyboard matrix onto PPI Port B bus pins (active low).
             // The column to read is the lower nibble of Port A output.
