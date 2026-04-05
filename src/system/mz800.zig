@@ -227,7 +227,7 @@ pub fn Type() type {
 
                 // Memory mapped IO for MZ-700
                 pub const IO_START: u16 = 0xe000;
-                pub const IO_END: u16 = 0xe009;
+                pub const IO_END: u16 = 0xe008;
             };
         };
 
@@ -499,6 +499,13 @@ pub fn Type() type {
                 // MZ-700 memory mapped IO
                 else if (self.gdg.is_mz700 and self.vram_banked_in and isInRange(addr, MEM_CONFIG.MZ700.IO_START, MEM_CONFIG.MZ700.IO_END)) {
                     bus = self.mz700TranslateIOREQ(bus);
+                }
+                // MZ-800 mode: $CE bit 3 = 0, gate closed — open bus for $E000-$E00F
+                else if (!self.gdg.is_mz700 and self.vram_banked_in and isInRange(addr, MEM_CONFIG.MZ700.IO_START, 0xe00f)) {
+                    if ((bus & RD) != 0) {
+                        bus = setData(bus, 0xFF);
+                    }
+                    // writes hit ROM2 (read-only), silently ignored
                 }
                 // Other memory
                 else {
@@ -807,9 +814,7 @@ pub fn Type() type {
             const is_wr = (bus & WR) != 0;
             switch (addr) {
                 // i8255
-                MEM_CONFIG.MZ700.IO_START => if (is_wr) {
-                    io_addr = 0xd0;
-                },
+                MEM_CONFIG.MZ700.IO_START => io_addr = 0xd0,
                 MEM_CONFIG.MZ700.IO_START + 0x01 => if (is_rd) {
                     io_addr = 0xd1;
                 },
