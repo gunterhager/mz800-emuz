@@ -289,6 +289,10 @@ pub fn Type() type {
         ram: [MEM_CONFIG.MZ800.RAM_SIZE]u8,
         rom: ROM,
         vram_banked_in: bool = false,
+        /// True when IN A,($E1) has mapped DRAM into MZ-800 region 2 ($8000-$BFFF),
+        /// displacing VRAM. Cleared by IN A,($E0), OUT ($E4),A, or reset.
+        /// Separate from vram_banked_in so that MZ-700 VRAM at $D000 is unaffected.
+        mz800_region2_is_dram: bool = false,
         /// Tracks which ROMs are currently mapped, used by PROHIBIT/RETURN.
         rom1_mapped: bool = true,
         cgrom_mapped: bool = true,
@@ -781,6 +785,7 @@ pub fn Type() type {
         fn isMZ800VRAMAddr(self: *Self, addr: u16) bool {
             if (!self.vram_banked_in) return false;
             if (self.gdg.is_mz700) return false;
+            if (self.mz800_region2_is_dram) return false;
             if (addr < MEM_CONFIG.MZ800.VRAM_START) return false;
             const hires = (self.gdg.dmd & GDG.DMD_MODE.HIRES) != 0;
             return addr < (if (hires) MEM_CONFIG.MZ800.VRAM_HIRES_END else MEM_CONFIG.MZ800.VRAM_LORES_END);
@@ -896,6 +901,7 @@ pub fn Type() type {
         /// Reset the memory map depending on type of reset
         fn resetMemoryMap(self: *Self, soft: bool) void {
             self.prohibit_active = false;
+            self.mz800_region2_is_dram = false;
             if (soft) {
                 // Soft reset: restore ROM layout but preserve RAM contents.
                 // VRAM is not intercepted after reset (matches reference implementation).
@@ -962,6 +968,7 @@ pub fn Type() type {
                                 self.mem.mapRAM(0x2000, 0xc000, self.ram[0x2000..0xe000]);
                             }
                             self.vram_banked_in = true;
+                            self.mz800_region2_is_dram = false;
                             self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, &self.rom.rom2);
                             self.rom2_mapped = true;
                         },
@@ -1006,12 +1013,12 @@ pub fn Type() type {
                             self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
                             self.cgrom_mapped = true;
                             self.vram_banked_in = true;
+                            self.mz800_region2_is_dram = false;
                         },
                         MEM.SW1 => {
                             self.mem.mapRAM(0x1000, 0x1000, self.ram[0x1000..0x2000]);
                             self.cgrom_mapped = false;
-                            // Do NOT clear vram_banked_in: reading $E1 only swaps CGROM→RAM at
-                            // $1000–$1FFF. VRAM at $D000–$DBFF remains accessible throughout boot.
+                            self.mz800_region2_is_dram = true;
                         },
                         else => {},
                     }
