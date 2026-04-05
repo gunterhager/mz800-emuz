@@ -201,8 +201,9 @@ test "MZ800 bank switching" {
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkROM2(sut));
 
-    // RD SW1: CGROM banked out (RAM at $1000 restored). VRAM is unaffected:
-    // reading $E1 only controls the $1000–$1FFF window, not $D000–$DBFF VRAM.
+    // RD SW1: CGROM banked out (RAM at $1000 restored). MZ-800 region 2 ($8000-$BFFF)
+    // is now DRAM (mz800_region2_is_dram = true). MZ-700 VRAM at $D000 is unaffected
+    // because vram_banked_in stays true (the ROM writes there without an explicit SW0/SW4).
     sut.bus = iorq_rd;
     sut.bus = mz800.setAddr(sut.bus, RD_MEM.SW1);
     sut.updateMemoryMap(sut.bus);
@@ -210,15 +211,15 @@ test "MZ800 bank switching" {
     try expect(checkRAM(sut, 0x1000, 0x1000));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkROM2(sut));
-    // vram_banked_in must remain true: the ROM continues to write to VRAM after
-    // this point (boot menu, command prompt) without an explicit SW0/SW4 re-enable.
     try expectEqual(sut.vram_banked_in, true);
+    try expectEqual(sut.mz800_region2_is_dram, true);
 
-    // RD SW0: CGROM and VRAM banked in (test only for VRAM)
+    // RD SW0: CGROM and VRAM banked in; mz800_region2_is_dram cleared.
     sut.bus = iorq_rd;
     sut.bus = mz800.setAddr(sut.bus, RD_MEM.SW0);
     sut.updateMemoryMap(sut.bus);
     try expectEqual(sut.vram_banked_in, true);
+    try expectEqual(sut.mz800_region2_is_dram, false);
 }
 
 test "MZ700 bank switching" {
@@ -322,8 +323,9 @@ test "MZ700 bank switching" {
     try expect(checkRAM(sut, 0xe000, 0x2000));
     try expectEqual(sut.vram_banked_in, true);
 
-    // RD SW1: CGROM banked out (RAM at $1000 restored). VRAM is unaffected:
-    // reading $E1 only controls the $1000–$1FFF window, not $D000–$DBFF VRAM.
+    // RD SW1: CGROM banked out (RAM at $1000 restored). MZ-700 VRAM at $D000 is
+    // unaffected (vram_banked_in stays true). mz800_region2_is_dram is set, but has
+    // no effect in MZ-700 mode since isMZ800VRAMAddr returns false when is_mz700=true.
     sut.bus = iorq_rd;
     sut.bus = mz800.setAddr(sut.bus, RD_MEM.SW1);
     sut.updateMemoryMap(sut.bus);
@@ -331,9 +333,8 @@ test "MZ700 bank switching" {
     try expect(checkRAM(sut, 0x1000, 0x1000));
     try expect(checkRAM(sut, 0x2000, 0xc000));
     try expect(checkRAM(sut, 0xe000, 0x2000));
-    // vram_banked_in must remain true: the ROM continues to write to VRAM after
-    // this point (boot menu, command prompt) without an explicit SW0/SW4 re-enable.
     try expectEqual(sut.vram_banked_in, true);
+    try expectEqual(sut.mz800_region2_is_dram, true);
 }
 
 test "MZ700 WR SW1 sets vram_banked_in false and maps D000-FFFF as RAM" {
