@@ -64,7 +64,7 @@ const PIO_PINS = z80pio.Pins{
     .INT = CPU_PINS.INT,
     .CE = CS_PINS.PIO,
     .BASEL = CPU_PINS.ABUS[0], // BASEL pin is directly connected to A0
-    .CDSEL = CPU_PINS.ABUS[1], // CDSEL pin is directly connected to A1
+    .CDSEL = CPU_PINS.ABUS[1], // CDSEL pin is connected to NOT(A1) — inverted in tick() when PIO.CE is active
     .ARDY = 41,
     .BRDY = 42,
     .ASTB = 43,
@@ -469,6 +469,15 @@ pub fn Type() type {
             // so it must be cleared here to prevent it from accumulating on self.bus
             // and permanently asserting the interrupt after the first timer firing.
             bus &= ~(PIO.CE | PPI.CS | CTC.CS | PSG.CE | Z80.INT);
+            // During interrupt acknowledge (M1+IORQ, no RD/WR), zero the data bus.
+            // The PIO's z80irq.tick() will overwrite with its vector ($FC) when it has
+            // a pending interrupt. If the PIO is not pending (e.g. CTC2 direct INT),
+            // the bus stays 0x00, forming vector address $0F00 → ROM CTC2 ISR.
+            // This matches the reference: pioz80_interrupt_ack_im2_cb() returns $FC
+            // when PENDING, or $00 otherwise.
+            if ((bus & (Z80.M1 | Z80.IORQ)) == (Z80.M1 | Z80.IORQ)) {
+                bus = setData(bus, 0x00);
+            }
 
             // Memory request
             if ((bus & MREQ) != 0) {
@@ -540,6 +549,12 @@ pub fn Type() type {
             // Set IEIO (interrupt enable input/output) to allow PIO to assert INT and provide interrupt vector in IM2 mode.
             // The PIO is the sole device in the daisy chain (no Z80 CTC), so it gets IEIO directly.
             bus |= @as(Bus, 1) << PIO_PINS.IEIO;
+            // MZ-800 hardware: PIO CDSEL is wired to NOT(A1) on the schematic.
+            // Invert CDSEL when the PIO is chip-selected so that I/O ports $FC/$FD
+            // route to the control register and $FE/$FF route to the data register.
+            if ((bus & PIO.CE) != 0) {
+                bus ^= PIO.CDSEL;
+            }
             bus = self.pio.tick(bus);
             // Inject keyboard matrix onto PPI Port B bus pins (active low).
             // The column to read is the lower nibble of Port A output.
