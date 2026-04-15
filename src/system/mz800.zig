@@ -388,8 +388,8 @@ pub fn Type() type {
             self.ctc.counter[1].gate = 1;
             self.ctc.counter[2].gate = 1;
             // GATE0 is controlled by the GDG CT53G7 register in MZ-700 mode (default low),
-            // and pulled high in MZ-800 mode.
-            self.bus = self.setCTC0Gate(self.bus, if (self.gdg.is_mz700) 0 else 1);
+            // and by PPI PC2 in MZ-800 mode (default low, matches PPI reset state).
+            self.bus = self.setCTC0Gate(self.bus, 0);
         }
 
         pub const MasterTickResult = struct {
@@ -535,8 +535,9 @@ pub fn Type() type {
             bus = self.gdg.tick(bus);
             // If MZ-700/MZ-800 mode changed via DMD register, update CTC GATE0.
             if (self.gdg.is_mz700 != was_mz700) {
-                // MZ-700 mode: GATE0 follows ct53g7 (default low). MZ-800 mode: GATE0 = 1.
-                bus = self.setCTC0Gate(bus, if (self.gdg.is_mz700) self.gdg.ct53g7 else 1);
+                // MZ-700 mode: GATE0 follows ct53g7. MZ-800 mode: GATE0 follows PPI PC2.
+                const pc2_on_mode_change: u1 = @truncate((self.ppi.ports[2].output >> 2) & 1);
+                bus = self.setCTC0Gate(bus, if (self.gdg.is_mz700) self.gdg.ct53g7 else pc2_on_mode_change);
             }
             // Inject VBLN onto PIO Port A bit 5 (PA5, bus bit 69).
             // VBLN is inactive (1) during canvas display, active (0) during blanking.
@@ -593,6 +594,11 @@ pub fn Type() type {
                 bus &= ~ppi_pc4_mask;
             }
             bus = self.ppi.tick(bus);
+            // In MZ-800 mode, PPI PC2 is GATE0 of 8253 ch.0. Update GATE0 before CTC tick.
+            if (!self.gdg.is_mz700) {
+                const pc2: u1 = @truncate((self.ppi.ports[2].output >> 2) & 1);
+                bus = self.setCTC0Gate(bus, pc2);
+            }
             // Read M-ON from PPI Port C bit 3 (PC3): motor on/off control (rising edge 0→1).
             const m_on = (self.ppi.ports[2].output & (1 << 3)) != 0;
             self.cmt.updateMotor(m_on);
@@ -601,11 +607,15 @@ pub fn Type() type {
             self.cmt.writeData(wdata);
             bus = self.ctc.tick(bus);
             // 8253 Ch.2 OUT drives Z80 INT, gated by PPI Port C bit 2 (INTMSK).
-            // Interrupt fires only when both OUT2 = 1 and PC2 = 1.
-            const ctc_out2 = (bus & (@as(Bus, 1) << CTC_PINS.OUT2)) != 0;
-            const ppi_pc2 = (self.ppi.ports[2].output & (1 << 2)) != 0;
-            if (ctc_out2 and ppi_pc2) {
-                bus |= @as(Bus, 1) << CPU_PINS.INT;
+            // This path is only active in MZ-700 mode. In MZ-800 mode, the PIO
+            // handles interrupts exclusively via IM2, and PPI PC2 serves only
+            // as GATE0 for 8253 Ch.0.
+            if (self.gdg.is_mz700) {
+                const ctc_out2 = (bus & (@as(Bus, 1) << CTC_PINS.OUT2)) != 0;
+                const ppi_pc2 = (self.ppi.ports[2].output & (1 << 2)) != 0;
+                if (ctc_out2 and ppi_pc2) {
+                    bus |= @as(Bus, 1) << CPU_PINS.INT;
+                }
             }
             // 8253 Ch.0 OUT drives PIO Port A bit 4 (PA4, active-low / inverted).
             // When CTC0 OUT is high, PA4 goes low; when CTC0 OUT is low, PA4 is high.
@@ -813,10 +823,10 @@ pub fn Type() type {
             return addr < (if (hires) MEM_CONFIG.MZ800.VRAM_HIRES_END else MEM_CONFIG.MZ800.VRAM_LORES_END);
         }
 
-        /// Set CTC counter 0 GATE0: updates both the bus pin and the counter gate state.
+        /// Set CTC counter 0 GATE0: updates the bus pin and triggers the counter state machine.
         fn setCTC0Gate(self: *Self, bus: Bus, val: u1) Bus {
-            self.ctc.counter[0].gate = val;
-            return if (val == 1) bus | CTC_GATE0 else bus & ~CTC_GATE0;
+            const b = if (val == 1) bus | CTC_GATE0 else bus & ~CTC_GATE0;
+            return self.ctc.setGATE0(b);
         }
 
         fn mz700TranslateIOREQ(self: *Self, in_bus: Bus) Bus {
