@@ -75,7 +75,7 @@ const PIO_PINS = z80pio.Pins{
     .IEIO = 50,
 };
 
-/// Intel 8255 PPI pus definitions
+/// i8255 PPI bus definitions
 const PPI_PINS = intel8255.Pins{
     .RD = CPU_PINS.RD,
     .WR = CPU_PINS.WR,
@@ -87,7 +87,7 @@ const PPI_PINS = intel8255.Pins{
     .PC = .{ 96, 97, 98, 99, 100, 101, 102, 103 },
 };
 
-/// Intel 8253 CTC pus definitions
+/// i8253 CTC bus definitions
 const CTC_PINS = intel8253.Pins{
     .RD = CPU_PINS.RD,
     .WR = CPU_PINS.WR,
@@ -112,7 +112,7 @@ const CTC_GATE0 = mask(Bus, CTC_PINS.GATE0);
 const CTC_GATE1 = mask(Bus, CTC_PINS.GATE1);
 const CTC_GATE2 = mask(Bus, CTC_PINS.GATE2);
 
-/// GDG bus definitions
+/// WHID65040-032 GDG bus definitions
 const GDG_PINS = gdg_whid65040_032.Pins{
     .ABUS = CPU_PINS.ABUS,
     .DBUS = CPU_PINS.DBUS,
@@ -123,7 +123,7 @@ const GDG_PINS = gdg_whid65040_032.Pins{
     .CS = CS_PINS.GDG,
 };
 
-/// PSG bus definitions
+/// SN76489AN PSG bus definitions
 const PSG_PINS = sn76489an.Pins{
     .DBUS = CPU_PINS.DBUS,
     .CE = CS_PINS.PSG,
