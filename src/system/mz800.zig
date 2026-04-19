@@ -3,7 +3,7 @@
 const std = @import("std");
 const chipz = @import("chipz");
 const clock_dividers = @import("frequencies.zig").clock_dividers;
-const frequencies = @import("frequencies.zig").frequencies;
+pub const frequencies = @import("frequencies.zig").frequencies;
 const video = @import("video.zig").video;
 
 const z80 = chipz.chips.z80;
@@ -64,7 +64,7 @@ const PIO_PINS = z80pio.Pins{
     .INT = CPU_PINS.INT,
     .CE = CS_PINS.PIO,
     .BASEL = CPU_PINS.ABUS[0], // BASEL pin is directly connected to A0
-    .CDSEL = CPU_PINS.ABUS[1], // CDSEL pin is directly connected to A1
+    .CDSEL = CPU_PINS.ABUS[1], // CDSEL pin is connected to NOT(A1) — inverted in tick() when PIO.CE is active
     .ARDY = 41,
     .BRDY = 42,
     .ASTB = 43,
@@ -75,7 +75,7 @@ const PIO_PINS = z80pio.Pins{
     .IEIO = 50,
 };
 
-/// Intel 8255 PPI pus definitions
+/// i8255 PPI bus definitions
 const PPI_PINS = intel8255.Pins{
     .RD = CPU_PINS.RD,
     .WR = CPU_PINS.WR,
@@ -87,7 +87,7 @@ const PPI_PINS = intel8255.Pins{
     .PC = .{ 96, 97, 98, 99, 100, 101, 102, 103 },
 };
 
-/// Intel 8253 CTC pus definitions
+/// i8253 CTC bus definitions
 const CTC_PINS = intel8253.Pins{
     .RD = CPU_PINS.RD,
     .WR = CPU_PINS.WR,
@@ -112,7 +112,7 @@ const CTC_GATE0 = mask(Bus, CTC_PINS.GATE0);
 const CTC_GATE1 = mask(Bus, CTC_PINS.GATE1);
 const CTC_GATE2 = mask(Bus, CTC_PINS.GATE2);
 
-/// GDG bus definitions
+/// WHID65040-032 GDG bus definitions
 const GDG_PINS = gdg_whid65040_032.Pins{
     .ABUS = CPU_PINS.ABUS,
     .DBUS = CPU_PINS.DBUS,
@@ -123,7 +123,7 @@ const GDG_PINS = gdg_whid65040_032.Pins{
     .CS = CS_PINS.GDG,
 };
 
-/// PSG bus definitions
+/// SN76489AN PSG bus definitions
 const PSG_PINS = sn76489an.Pins{
     .DBUS = CPU_PINS.DBUS,
     .CE = CS_PINS.PSG,
@@ -227,7 +227,7 @@ pub fn Type() type {
 
                 // Memory mapped IO for MZ-700
                 pub const IO_START: u16 = 0xe000;
-                pub const IO_END: u16 = 0xe009;
+                pub const IO_END: u16 = 0xe008;
             };
         };
 
@@ -289,6 +289,10 @@ pub fn Type() type {
         ram: [MEM_CONFIG.MZ800.RAM_SIZE]u8,
         rom: ROM,
         vram_banked_in: bool = false,
+        /// True when IN A,($E1) has mapped DRAM into MZ-800 region 2 ($8000-$BFFF),
+        /// displacing VRAM. Cleared by IN A,($E0), OUT ($E4),A, or reset.
+        /// Separate from vram_banked_in so that MZ-700 VRAM at $D000 is unaffected.
+        mz800_region2_is_dram: bool = false,
         /// Tracks which ROMs are currently mapped, used by PROHIBIT/RETURN.
         rom1_mapped: bool = true,
         cgrom_mapped: bool = true,
@@ -384,8 +388,57 @@ pub fn Type() type {
             self.ctc.counter[1].gate = 1;
             self.ctc.counter[2].gate = 1;
             // GATE0 is controlled by the GDG CT53G7 register in MZ-700 mode (default low),
-            // and pulled high in MZ-800 mode.
-            self.bus = self.setCTC0Gate(self.bus, if (self.gdg.is_mz700) 0 else 1);
+            // and by PPI PC2 in MZ-800 mode (default low, matches PPI reset state).
+            self.bus = self.setCTC0Gate(self.bus, 0);
+        }
+
+        pub const MasterTickResult = struct {
+            bus: Bus,
+            cpu_ticked: bool,
+        };
+
+        /// Advance one master clock tick. Returns the updated bus and whether a CPU tick fired.
+        pub fn tickMaster(self: *Self, in_bus: Bus) MasterTickResult {
+            var bus = in_bus;
+            self.clock.ticks +%= 1;
+            // CPU tick
+            const cpu_ticked = (self.clock.ticks % clock_dividers.CPU_CLK) == 0;
+            if (cpu_ticked) {
+                bus = self.tick(bus);
+            }
+            // CTC CLK0 tick, CTC counters count only falling edge so we need to
+            // toggle the signal at clock divider / 2
+            if ((self.clock.ticks % clock_dividers.CKMS) == (clock_dividers.CKMS / 2)) {
+                // Toggle CLK0
+                bus ^= CTC_CLK0;
+                bus = self.ctc.setCLK0(bus);
+            }
+            // CLK1 (real HSYNC) is now driven from videoTick() based on h_ticks,
+            // asserting at h_tick=950 and deasserting at h_tick=1030 each line.
+            // TEMPO tick (cursor blink oscillator)
+            if ((self.clock.ticks % (clock_dividers.TEMPO / 2)) == 0) {
+                self.gdg.status ^= GDG.STATUS_MODE.TEMPO;
+            }
+            // 556 cursor oscillator tick → PC6
+            if ((self.clock.ticks % (clock_dividers.CURSOR / 2)) == 0) {
+                self.video.cursor_osc ^= 1;
+            }
+            // PSG tick (~221.7 kHz)
+            if ((self.clock.ticks % clock_dividers.PSG_CLK) == 0) {
+                self.psg.step();
+            }
+            // Audio sample tick (at host sample rate)
+            if ((self.clock.ticks % self.audio_sample_tick) == 0) {
+                // Mix PSG output with 8253 Ch.0 square wave, gated by SMSK (PC0).
+                const smsk = (self.ppi.ports[2].output & (1 << 0)) != 0;
+                const pit_out0: f32 = if (smsk and self.ctc.counter[0].out == 1) 1.0 else 0.0;
+                self.audio.put(self.psg.sample() + pit_out0);
+            }
+            // Video tick
+            bus = self.videoTick(bus);
+            // CMT tick: advance tape position by one master clock tick
+            self.cmt.tick();
+            return .{ .bus = bus, .cpu_ticked = cpu_ticked };
         }
 
         pub fn exec(self: *Self, micro_seconds: u32) u32 {
@@ -393,50 +446,15 @@ pub fn Type() type {
             const CLK0: u64 = @intFromFloat(frequencies.CLK0);
             const num_ticks = clock.microSecondsToTicks(CLK0, micro_seconds);
             for (0..num_ticks) |_| {
-                self.clock.ticks +%= 1;
-                // CPU tick
-                if ((self.clock.ticks % clock_dividers.CPU_CLK) == 0) {
-                    bus = self.tick(bus);
-                }
-                // CTC CLK0 tick, CTC counters count only falling edge so we need to
-                // toggle the signal at clock divider / 2
-                if ((self.clock.ticks % clock_dividers.CKMS) == (clock_dividers.CKMS / 2)) {
-                    // Toggle CLK0
-                    bus ^= CTC_CLK0;
-                    bus = self.ctc.setCLK0(bus);
-                }
-                // CLK1 (real HSYNC) is now driven from videoTick() based on h_ticks,
-                // asserting at h_tick=950 and deasserting at h_tick=1030 each line.
-                // TEMPO tick (cursor blink oscillator)
-                if ((self.clock.ticks % (clock_dividers.TEMPO / 2)) == 0) {
-                    self.gdg.status ^= GDG.STATUS_MODE.TEMPO;
-                }
-                // 556 cursor oscillator tick → PC6
-                if ((self.clock.ticks % (clock_dividers.CURSOR / 2)) == 0) {
-                    self.video.cursor_osc ^= 1;
-                }
-                // PSG tick (~221.7 kHz)
-                if ((self.clock.ticks % clock_dividers.PSG_CLK) == 0) {
-                    self.psg.step();
-                }
-                // Audio sample tick (at host sample rate)
-                if ((self.clock.ticks % self.audio_sample_tick) == 0) {
-                    // Mix PSG output with 8253 Ch.0 square wave, gated by SMSK (PC0).
-                    const smsk = (self.ppi.ports[2].output & (1 << 0)) != 0;
-                    const pit_out0: f32 = if (smsk and self.ctc.counter[0].out == 1) 1.0 else 0.0;
-                    self.audio.put(self.psg.sample() + pit_out0);
-                }
-                // Video tick
-                bus = self.videoTick(bus);
-                // CMT tick: advance tape position by one master clock tick
-                self.cmt.tick();
+                const result = self.tickMaster(bus);
+                bus = result.bus;
             }
             self.bus = bus;
             self.updateKeyboard(micro_seconds);
             return num_ticks;
         }
 
-        fn updateKeyboard(self: *Self, micro_seconds: u32) void {
+        pub fn updateKeyboard(self: *Self, micro_seconds: u32) void {
             self.key_buf.update(micro_seconds);
         }
 
@@ -451,6 +469,15 @@ pub fn Type() type {
             // so it must be cleared here to prevent it from accumulating on self.bus
             // and permanently asserting the interrupt after the first timer firing.
             bus &= ~(PIO.CE | PPI.CS | CTC.CS | PSG.CE | Z80.INT);
+            // During interrupt acknowledge (M1+IORQ, no RD/WR), zero the data bus.
+            // The PIO's z80irq.tick() will overwrite with its vector ($FC) when it has
+            // a pending interrupt. If the PIO is not pending (e.g. CTC2 direct INT),
+            // the bus stays 0x00, forming vector address $0F00 → ROM CTC2 ISR.
+            // This matches the reference: pioz80_interrupt_ack_im2_cb() returns $FC
+            // when PENDING, or $00 otherwise.
+            if ((bus & (Z80.M1 | Z80.IORQ)) == (Z80.M1 | Z80.IORQ)) {
+                bus = setData(bus, 0x00);
+            }
 
             // Memory request
             if ((bus & MREQ) != 0) {
@@ -482,6 +509,13 @@ pub fn Type() type {
                 else if (self.gdg.is_mz700 and self.vram_banked_in and isInRange(addr, MEM_CONFIG.MZ700.IO_START, MEM_CONFIG.MZ700.IO_END)) {
                     bus = self.mz700TranslateIOREQ(bus);
                 }
+                // MZ-800 mode: $CE bit 3 = 0, gate closed — open bus for $E000-$E00F
+                else if (!self.gdg.is_mz700 and self.vram_banked_in and isInRange(addr, MEM_CONFIG.MZ700.IO_START, 0xe00f)) {
+                    if ((bus & RD) != 0) {
+                        bus = setData(bus, 0xFF);
+                    }
+                    // writes hit ROM2 (read-only), silently ignored
+                }
                 // Other memory
                 else {
                     if ((bus & RD) != 0) {
@@ -501,8 +535,9 @@ pub fn Type() type {
             bus = self.gdg.tick(bus);
             // If MZ-700/MZ-800 mode changed via DMD register, update CTC GATE0.
             if (self.gdg.is_mz700 != was_mz700) {
-                // MZ-700 mode: GATE0 follows ct53g7 (default low). MZ-800 mode: GATE0 = 1.
-                bus = self.setCTC0Gate(bus, if (self.gdg.is_mz700) self.gdg.ct53g7 else 1);
+                // MZ-700 mode: GATE0 follows ct53g7. MZ-800 mode: GATE0 follows PPI PC2.
+                const pc2_on_mode_change: u1 = @truncate((self.ppi.ports[2].output >> 2) & 1);
+                bus = self.setCTC0Gate(bus, if (self.gdg.is_mz700) self.gdg.ct53g7 else pc2_on_mode_change);
             }
             // Inject VBLN onto PIO Port A bit 5 (PA5, bus bit 69).
             // VBLN is inactive (1) during canvas display, active (0) during blanking.
@@ -511,6 +546,15 @@ pub fn Type() type {
                 bus |= pio_pa5_mask;
             } else {
                 bus &= ~pio_pa5_mask;
+            }
+            // Set IEIO (interrupt enable input/output) to allow PIO to assert INT and provide interrupt vector in IM2 mode.
+            // The PIO is the sole device in the daisy chain (no Z80 CTC), so it gets IEIO directly.
+            bus |= @as(Bus, 1) << PIO_PINS.IEIO;
+            // MZ-800 hardware: PIO CDSEL is wired to NOT(A1) on the schematic.
+            // Invert CDSEL when the PIO is chip-selected so that I/O ports $FC/$FD
+            // route to the control register and $FE/$FF route to the data register.
+            if ((bus & PIO.CE) != 0) {
+                bus ^= PIO.CDSEL;
             }
             bus = self.pio.tick(bus);
             // Inject keyboard matrix onto PPI Port B bus pins (active low).
@@ -550,6 +594,11 @@ pub fn Type() type {
                 bus &= ~ppi_pc4_mask;
             }
             bus = self.ppi.tick(bus);
+            // In MZ-800 mode, PPI PC2 is GATE0 of 8253 ch.0. Update GATE0 before CTC tick.
+            if (!self.gdg.is_mz700) {
+                const pc2: u1 = @truncate((self.ppi.ports[2].output >> 2) & 1);
+                bus = self.setCTC0Gate(bus, pc2);
+            }
             // Read M-ON from PPI Port C bit 3 (PC3): motor on/off control (rising edge 0→1).
             const m_on = (self.ppi.ports[2].output & (1 << 3)) != 0;
             self.cmt.updateMotor(m_on);
@@ -558,11 +607,15 @@ pub fn Type() type {
             self.cmt.writeData(wdata);
             bus = self.ctc.tick(bus);
             // 8253 Ch.2 OUT drives Z80 INT, gated by PPI Port C bit 2 (INTMSK).
-            // Interrupt fires only when both OUT2 = 1 and PC2 = 1.
-            const ctc_out2 = (bus & (@as(Bus, 1) << CTC_PINS.OUT2)) != 0;
-            const ppi_pc2 = (self.ppi.ports[2].output & (1 << 2)) != 0;
-            if (ctc_out2 and ppi_pc2) {
-                bus |= @as(Bus, 1) << CPU_PINS.INT;
+            // This path is only active in MZ-700 mode. In MZ-800 mode, the PIO
+            // handles interrupts exclusively via IM2, and PPI PC2 serves only
+            // as GATE0 for 8253 Ch.0.
+            if (self.gdg.is_mz700) {
+                const ctc_out2 = (bus & (@as(Bus, 1) << CTC_PINS.OUT2)) != 0;
+                const ppi_pc2 = (self.ppi.ports[2].output & (1 << 2)) != 0;
+                if (ctc_out2 and ppi_pc2) {
+                    bus |= @as(Bus, 1) << CPU_PINS.INT;
+                }
             }
             // 8253 Ch.0 OUT drives PIO Port A bit 4 (PA4, active-low / inverted).
             // When CTC0 OUT is high, PA4 goes low; when CTC0 OUT is low, PA4 is high.
@@ -764,15 +817,16 @@ pub fn Type() type {
         fn isMZ800VRAMAddr(self: *Self, addr: u16) bool {
             if (!self.vram_banked_in) return false;
             if (self.gdg.is_mz700) return false;
+            if (self.mz800_region2_is_dram) return false;
             if (addr < MEM_CONFIG.MZ800.VRAM_START) return false;
             const hires = (self.gdg.dmd & GDG.DMD_MODE.HIRES) != 0;
             return addr < (if (hires) MEM_CONFIG.MZ800.VRAM_HIRES_END else MEM_CONFIG.MZ800.VRAM_LORES_END);
         }
 
-        /// Set CTC counter 0 GATE0: updates both the bus pin and the counter gate state.
+        /// Set CTC counter 0 GATE0: updates the bus pin and triggers the counter state machine.
         fn setCTC0Gate(self: *Self, bus: Bus, val: u1) Bus {
-            self.ctc.counter[0].gate = val;
-            return if (val == 1) bus | CTC_GATE0 else bus & ~CTC_GATE0;
+            const b = if (val == 1) bus | CTC_GATE0 else bus & ~CTC_GATE0;
+            return self.ctc.setGATE0(b);
         }
 
         fn mz700TranslateIOREQ(self: *Self, in_bus: Bus) Bus {
@@ -785,9 +839,7 @@ pub fn Type() type {
             const is_wr = (bus & WR) != 0;
             switch (addr) {
                 // i8255
-                MEM_CONFIG.MZ700.IO_START => if (is_wr) {
-                    io_addr = 0xd0;
-                },
+                MEM_CONFIG.MZ700.IO_START => io_addr = 0xd0,
                 MEM_CONFIG.MZ700.IO_START + 0x01 => if (is_rd) {
                     io_addr = 0xd1;
                 },
@@ -879,6 +931,7 @@ pub fn Type() type {
         /// Reset the memory map depending on type of reset
         fn resetMemoryMap(self: *Self, soft: bool) void {
             self.prohibit_active = false;
+            self.mz800_region2_is_dram = false;
             if (soft) {
                 // Soft reset: restore ROM layout but preserve RAM contents.
                 // VRAM is not intercepted after reset (matches reference implementation).
@@ -945,6 +998,7 @@ pub fn Type() type {
                                 self.mem.mapRAM(0x2000, 0xc000, self.ram[0x2000..0xe000]);
                             }
                             self.vram_banked_in = true;
+                            self.mz800_region2_is_dram = false;
                             self.mem.mapROM(MEM_CONFIG.MZ800.ROM2_START, MEM_CONFIG.MZ800.ROM2_SIZE, &self.rom.rom2);
                             self.rom2_mapped = true;
                         },
@@ -989,12 +1043,12 @@ pub fn Type() type {
                             self.mem.mapROM(MEM_CONFIG.MZ800.CGROM_START, MEM_CONFIG.MZ800.CGROM_SIZE, &self.rom.cgrom);
                             self.cgrom_mapped = true;
                             self.vram_banked_in = true;
+                            self.mz800_region2_is_dram = false;
                         },
                         MEM.SW1 => {
                             self.mem.mapRAM(0x1000, 0x1000, self.ram[0x1000..0x2000]);
                             self.cgrom_mapped = false;
-                            // Do NOT clear vram_banked_in: reading $E1 only swaps CGROM→RAM at
-                            // $1000–$1FFF. VRAM at $D000–$DBFF remains accessible throughout boot.
+                            self.mz800_region2_is_dram = true;
                         },
                         else => {},
                     }

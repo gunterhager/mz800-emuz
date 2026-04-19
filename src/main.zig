@@ -17,6 +17,7 @@ const MZF = mzf.Type();
 const mz800_name = "MZ-800";
 const mz700_name = "MZ-700";
 
+const clock = chipz.common.clock;
 const ui = chipz.ui;
 const ui_intern = @import("ui");
 const ig = @import("cimgui");
@@ -87,8 +88,8 @@ const UI_Z80PIO_Pins = [_]UI_CHIP.Pin{
     .{ .name = "PA5", .slot = 27, .mask = mz800.PIO.PA5 },
     .{ .name = "PA6", .slot = 28, .mask = mz800.PIO.PA6 },
     .{ .name = "PA7", .slot = 29, .mask = mz800.PIO.PA7 },
-    .{ .name = "BRDY", .slot = 30, .mask = mz800.PIO.ARDY },
-    .{ .name = "BSTB", .slot = 31, .mask = mz800.PIO.ASTB },
+    .{ .name = "BRDY", .slot = 30, .mask = mz800.PIO.BRDY },
+    .{ .name = "BSTB", .slot = 31, .mask = mz800.PIO.BSTB },
     .{ .name = "PB0", .slot = 32, .mask = mz800.PIO.PB0 },
     .{ .name = "PB1", .slot = 33, .mask = mz800.PIO.PB1 },
     .{ .name = "PB2", .slot = 34, .mask = mz800.PIO.PB2 },
@@ -167,6 +168,8 @@ const UI_GDG = ui_intern.ui_gdg_whid65040_032.Type(.{ .bus = mz800.Bus, .gdg = m
 const UI_GDG_Pins = [_]UI_CHIP.Pin{};
 const UI_KEYBOARD = ui_intern.ui_keyboard.Type(.{ .sys = MZ800 });
 const UI_CMT = ui_intern.ui_cmt.Type(.{ .sys = MZ800 });
+const UI_DBG = ui.ui_dbg.Type(.{ .bus = mz800.Bus, .cpu = mz800.Z80 });
+const UI_BP = ui_intern.ui_bp.Type(.{ .bus = mz800.Bus, .cpu = mz800.Z80 });
 var sys: MZ800 = undefined;
 var gpa: DebugAllocator = .init;
 
@@ -177,6 +180,13 @@ var ui_intel8253: UI_INTEL8253 = undefined;
 var ui_gdg: UI_GDG = undefined;
 var ui_keyboard: UI_KEYBOARD = undefined;
 var ui_cmt: UI_CMT = undefined;
+var ui_dbg_win: UI_DBG = undefined;
+var ui_bp_win: UI_BP = undefined;
+
+fn memRead(addr: u16, userdata: ?*anyopaque) u8 {
+    const s: *MZ800 = @ptrCast(@alignCast(userdata));
+    return s.mem.rd(addr);
+}
 
 export fn init() void {
     std.debug.print("🚨 Booting MZ-800...\n", .{});
@@ -253,6 +263,17 @@ export fn init() void {
         .sys = &sys,
         .origin = .{ .x = 20, .y = 500 },
     });
+    ui_dbg_win.initInPlace(.{
+        .title = "CPU Debugger",
+        .cpu = &sys.cpu,
+        .read_cb = memRead,
+        .userdata = &sys,
+        .origin = .{ .x = 20, .y = 20 },
+    });
+    ui_bp_win.initInPlace(.{
+        .dbg = &ui_dbg_win,
+        .origin = .{ .x = 500, .y = 20 },
+    });
 
     // initialize sokol-imgui
     simgui.setup(.{
@@ -261,11 +282,33 @@ export fn init() void {
     host.gfx.addDrawFunc(renderGUI);
 }
 
+fn execWithDebug(frame_time: u32) u32 {
+    if (ui_dbg_win.isStopped()) {
+        sys.updateKeyboard(frame_time);
+        return 0;
+    } else if (ui_dbg_win.needsTickDebug()) {
+        const CLK0: u64 = @intFromFloat(frequencies.CLK0);
+        const max_ticks = clock.microSecondsToTicks(CLK0, frame_time);
+        var ticks: u32 = 0;
+        while (ticks < max_ticks) : (ticks += 1) {
+            const result = sys.tickMaster(sys.bus);
+            sys.bus = result.bus;
+            if (result.cpu_ticked) {
+                if (ui_dbg_win.tick(sys.bus)) break;
+            }
+        }
+        sys.updateKeyboard(frame_time);
+        return ticks;
+    } else {
+        return sys.exec(frame_time);
+    }
+}
+
 export fn frame() void {
     const frame_time = host.time.frameTime();
     host.prof.pushMicroSeconds(.FRAME, frame_time);
     host.time.emuStart();
-    const num_ticks = sys.exec(frame_time);
+    const num_ticks = execWithDebug(frame_time);
     host.prof.pushMicroSeconds(.EMU, host.time.emuEnd());
     const name = if (sys.gdg.is_mz700) mz700_name else mz800_name;
 
@@ -285,6 +328,8 @@ export fn frame() void {
     ui_gdg.draw();
     ui_keyboard.draw();
     ui_cmt.draw();
+    ui_dbg_win.draw(sys.bus);
+    ui_bp_win.draw();
 
     host.gfx.draw(.{
         .display = sys.displayInfo(),
@@ -345,10 +390,10 @@ fn uiDrawMenu() void {
         }
         if (ig.igBeginMenu("Debug")) {
             if (ig.igMenuItem("CPU Debugger")) {
-                // TODO: open window
+                ui_dbg_win.open = true;
             }
             if (ig.igMenuItem("Breakpoints")) {
-                // TODO: open window
+                ui_bp_win.open = true;
             }
             if (ig.igBeginMenu("Memory Editor")) {
                 if (ig.igMenuItem("VRAM")) {
